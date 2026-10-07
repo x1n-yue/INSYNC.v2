@@ -1,0 +1,813 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
+import { supabase } from "../lib/supabaseClient";
+import Shell from "./Shell";
+import Modal from "./Modal";
+import { useToast } from "./Toast";
+import {
+  IconGrid,
+  IconClock,
+  IconFileText,
+  IconFileDown,
+  IconFolder,
+  IconCheck,
+  IconTrendingUp,
+  IconCalendar,
+  IconAward,
+  IconAlertTriangle,
+  IconUpload,
+} from "./Icons";
+
+const navItems = [
+  { id: "dashboard", label: "My Dashboard", icon: <IconGrid size={15} /> },
+  { id: "attendance", label: "My Attendance", icon: <IconClock size={15} /> },
+  { id: "documents", label: "My Documents", icon: <IconFolder size={15} /> },
+  { id: "evaluations", label: "My Evaluations", icon: <IconFileText size={15} /> },
+  { id: "reports", label: "Reports", icon: <IconFileDown size={15} /> },
+];
+
+const weekViews = ["Weekly", "Monthly", "All Time"];
+const dtrFilters = ["all", "week", "month"];
+
+function formatTime(d) {
+  const h = d.getHours();
+  const m = d.getMinutes();
+  const ampm = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 || 12;
+  return `${String(h12).padStart(2, "0")}:${String(m).padStart(2, "0")} ${ampm}`;
+}
+
+function StatCard({ icon, iconBg, iconColor, label, value, sub }) {
+  return (
+    <div className="rounded-xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+      <div className="w-9 h-9 rounded-lg flex items-center justify-center mb-3" style={{ background: iconBg, color: iconColor }}>
+        {icon}
+      </div>
+      <div className="text-2xl font-bold mb-0.5" style={{ color: "var(--foreground)" }}>{value}</div>
+      <div className="text-xs font-medium mb-0.5" style={{ color: "var(--muted-foreground)" }}>{label}</div>
+      <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>{sub}</div>
+    </div>
+  );
+}
+
+function DocStatusBadge({ status }) {
+  const map = {
+    Approved: { bg: "var(--success-bg)", color: "var(--success)" },
+    Pending: { bg: "var(--warning-bg)", color: "var(--warning)" },
+    "Needs Revision": { bg: "var(--danger-bg)", color: "var(--danger)" },
+  };
+  return (
+    <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={map[status]}>
+      {status}
+    </span>
+  );
+}
+
+const todayStr = () => new Date().toISOString().slice(0, 10);
+const inputCls = "w-full text-sm py-2 px-3 rounded-lg border outline-none";
+const inputStyle = { borderColor: "var(--border)", background: "var(--card)", color: "var(--foreground)" };
+
+export default function InternDashboard({ profile, onLogout }) {
+  const { toast } = useToast();
+  const [tab, setTab] = useState("dashboard");
+  const [loading, setLoading] = useState(true);
+  const [internInfo, setInternInfo] = useState(null); // { required_hours, companies:{name}, profiles:{full_name} }
+  const [dtr, setDtr] = useState([]); // attendance_logs, newest first
+  const [evaluationList, setEvaluationList] = useState([]);
+  const [exceptions, setExceptions] = useState([]);
+  const [docs, setDocs] = useState([]);
+  const [weekView, setWeekView] = useState("Weekly");
+  const [showWeekPicker, setShowWeekPicker] = useState(false);
+  const [dtrFilter, setDtrFilter] = useState("all");
+
+  // Live elapsed timer while clocked in
+  const [elapsed, setElapsed] = useState("00:00:00");
+
+  // Accomplishment modal (shown before clock-out)
+  const [showAccomplModal, setShowAccomplModal] = useState(false);
+  const [accomplishment, setAccomplishment] = useState("");
+
+  // Exception form
+  const [exForm, setExForm] = useState({ date: "", claimedIn: "", claimedOut: "", reason: "" });
+
+  // Document upload
+  const fileInputRefs = useRef({});
+
+  const loadAll = async () => {
+    setLoading(true);
+    const [{ data: internRow }, { data: attendanceRows }, { data: evalRows }, { data: exceptionRows }, { data: docRows }] =
+      await Promise.all([
+        supabase
+          .from("interns")
+          .select("required_hours, companies(name), profiles!interns_instructor_id_fkey(full_name)")
+          .eq("id", profile.id)
+          .maybeSingle(),
+        supabase.from("attendance_logs").select("*").eq("intern_id", profile.id).order("log_date", { ascending: false }),
+        supabase
+          .from("evaluations")
+          .select("*, profiles!evaluations_evaluator_id_fkey(full_name)")
+          .eq("intern_id", profile.id)
+          .order("created_at", { ascending: false }),
+        supabase.from("attendance_exceptions").select("*").eq("intern_id", profile.id).order("created_at", { ascending: false }),
+        supabase.from("documents").select("*").eq("intern_id", profile.id).order("name"),
+      ]);
+    setInternInfo(internRow);
+    setDtr(attendanceRows ?? []);
+    setEvaluationList(evalRows ?? []);
+    setExceptions(exceptionRows ?? []);
+    setDocs(docRows ?? []);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile.id]);
+
+  const todayRow = dtr.find((d) => d.log_date === todayStr());
+  const clockInDate = todayRow?.time_in ? new Date(`${todayRow.log_date}T${todayRow.time_in}`) : null;
+  const isClockedIn = Boolean(todayRow && todayRow.time_in && !todayRow.time_out);
+
+  // Live elapsed timer
+  useEffect(() => {
+    if (!isClockedIn || !clockInDate) {
+      setElapsed("00:00:00");
+      return;
+    }
+    const id = setInterval(() => {
+      const diff = Date.now() - clockInDate.getTime();
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setElapsed(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`);
+    }, 1000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isClockedIn, clockInDate?.getTime()]);
+
+  const handleClockIn = async () => {
+    const now = new Date();
+    const timeStr = now.toTimeString().slice(0, 8);
+    const { data, error } = await supabase
+      .from("attendance_logs")
+      .insert({ intern_id: profile.id, log_date: todayStr(), time_in: timeStr })
+      .select()
+      .single();
+    if (error) return toast(error.message, "error");
+    setDtr((prev) => [data, ...prev]);
+    toast("Clocked in at " + formatTime(now), "success");
+  };
+
+  const handleClockOut = async (accomp) => {
+    if (!todayRow) return;
+    const now = new Date();
+    const timeStr = now.toTimeString().slice(0, 8);
+    const hoursWorked = clockInDate ? (now.getTime() - clockInDate.getTime()) / 3600000 : 0;
+    const hrs = Math.round(hoursWorked * 10) / 10;
+    // Match on intern_id + log_date (not just id) and use maybeSingle so a
+    // 0-row result (e.g. blocked by RLS) surfaces a clear message instead
+    // of the generic "cannot coerce" crash from .single().
+    const { data, error } = await supabase
+      .from("attendance_logs")
+      .update({ time_out: timeStr, hours: hrs, accomplishment: accomp })
+      .eq("intern_id", profile.id)
+      .eq("log_date", todayStr())
+      .select()
+      .maybeSingle();
+    if (error) return toast(error.message, "error");
+    if (!data) {
+      toast("Clock-out was blocked by the database (permissions). See console for details.", "error");
+      console.error(
+        "attendance_logs update matched 0 rows — check RLS policies on attendance_logs (see supabase/schema.sql)."
+      );
+      return;
+    }
+    setDtr((prev) => prev.map((d) => (d.id === data.id ? data : d)));
+    toast(`Clocked out — ${hrs} hrs logged`, "success");
+  };
+
+  const submitException = async () => {
+    if (!exForm.date || !exForm.claimedIn || !exForm.claimedOut || !exForm.reason.trim()) {
+      toast("Please complete all fields", "error");
+      return;
+    }
+    const { data, error } = await supabase
+      .from("attendance_exceptions")
+      .insert({
+        intern_id: profile.id,
+        log_date: exForm.date,
+        claimed_time_in: exForm.claimedIn,
+        claimed_time_out: exForm.claimedOut,
+        reason: exForm.reason.trim(),
+      })
+      .select()
+      .single();
+    if (error) return toast(error.message, "error");
+    setExceptions((prev) => [data, ...prev]);
+    setExForm({ date: "", claimedIn: "", claimedOut: "", reason: "" });
+    toast("Exception request submitted — awaiting instructor review", "info");
+  };
+
+  const handleDocUpload = async (doc, file) => {
+    const path = `${profile.id}/${doc.doc_type}-${Date.now()}-${file.name}`;
+    const { error: uploadError } = await supabase.storage.from("documents").upload(path, file, { upsert: true });
+    if (uploadError) return toast(uploadError.message, "error");
+    const { data, error } = await supabase
+      .from("documents")
+      .update({ file_path: path, file_name: file.name, status: "Pending", note: null, updated_at: new Date().toISOString() })
+      .eq("id", doc.id)
+      .select()
+      .single();
+    if (error) return toast(error.message, "error");
+    setDocs((prev) => prev.map((d) => (d.id === doc.id ? data : d)));
+    toast(`${file.name} uploaded — pending instructor review`, "info");
+  };
+
+  const hoursRendered = useMemo(
+    () => Math.round(dtr.reduce((sum, d) => sum + (Number(d.hours) || 0), 0) * 10) / 10,
+    [dtr]
+  );
+  const hoursRequired = internInfo?.required_hours ?? 486;
+  const progress = hoursRequired > 0 ? Math.round((hoursRendered / hoursRequired) * 100) : 0;
+
+  const remainingHours = Math.max(0, hoursRequired - hoursRendered);
+
+  const filteredDtr = dtrFilter === "week" ? dtr.slice(0, 5) : dtrFilter === "month" ? dtr.slice(0, 20) : dtr;
+
+  const latestEval = evaluationList[0];
+  const docApprovedCount = docs.filter((d) => d.status === "Approved").length;
+  const clearanceReady = hoursRendered >= hoursRequired;
+
+  const weeklyDataSets = useMemo(() => {
+    const withHours = [...dtr].filter((d) => d.hours != null).sort((a, b) => a.log_date.localeCompare(b.log_date));
+    const byDay = withHours.slice(-8).map((d) => ({ day: new Date(d.log_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }), hours: Number(d.hours) }));
+
+    const byMonthMap = {};
+    withHours.forEach((d) => {
+      const key = new Date(d.log_date).toLocaleDateString("en-US", { month: "short" });
+      byMonthMap[key] = byMonthMap[key] ? { total: byMonthMap[key].total + Number(d.hours), count: byMonthMap[key].count + 1 } : { total: Number(d.hours), count: 1 };
+    });
+    const byMonth = Object.entries(byMonthMap).map(([day, v]) => ({ day, hours: Math.round((v.total / v.count) * 10) / 10 }));
+
+    return { Weekly: byDay, Monthly: byMonth, "All Time": byMonth };
+  }, [dtr]);
+
+  const stats = [
+    { icon: <IconClock size={18} />, iconBg: "#eff6ff", iconColor: "#2563eb", label: "Hours Rendered", value: `${hoursRendered}`, sub: `of ${hoursRequired} Required` },
+    { icon: <IconCheck size={18} />, iconBg: "#f0fdf4", iconColor: "#16a34a", label: "Completion", value: `${progress}%`, sub: "Overall progress" },
+    { icon: <IconAward size={18} />, iconBg: "#fefce8", iconColor: "#d97706", label: "Latest Score", value: latestEval ? `${Number(latestEval.overall_score).toFixed(0)}/100` : "—", sub: "Most recent evaluation" },
+  ];
+
+  return (
+    <Shell
+      userName={profile.full_name}
+      userEmail={profile.email}
+      userRole="Student/Intern"
+      navItems={navItems}
+      activeTab={tab}
+      onTabChange={setTab}
+      onLogout={onLogout}
+    >
+      <div className="p-6 space-y-5">
+        {loading && <div className="text-sm" style={{ color: "var(--muted-foreground)" }}>Loading…</div>}
+
+        {/* ── DASHBOARD ─────────────────────────────────────────────────── */}
+        {!loading && tab === "dashboard" && (
+          <>
+            <div>
+              <h1 className="text-xl font-bold" style={{ color: "var(--foreground)" }}>
+                Hi, {profile.full_name.split(" ")[0]}!
+              </h1>
+              <p className="text-sm mt-0.5" style={{ color: "var(--muted-foreground)" }}>
+                {profile.organization ?? "—"}{internInfo?.companies?.name ? ` — ${internInfo.companies.name}` : ""}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {stats.map((s) => <StatCard key={s.label} {...s} />)}
+            </div>
+
+            <div className="grid lg:grid-cols-5 gap-4">
+              <div className="lg:col-span-3 space-y-4">
+                <div className="rounded-xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-sm font-semibold">{weekView} Hours Log</h2>
+                    <div className="relative">
+                      <button className="text-xs" style={{ color: "var(--primary)" }}
+                        onClick={() => setShowWeekPicker((v) => !v)}>
+                        {weekView} ▾
+                      </button>
+                      {showWeekPicker && (
+                        <div className="absolute right-0 top-6 z-10 rounded-lg shadow-lg overflow-hidden"
+                          style={{ background: "var(--card)", border: "1px solid var(--border)", minWidth: "110px" }}>
+                          {weekViews.map((v) => (
+                            <button key={v} onClick={() => { setWeekView(v); setShowWeekPicker(false); }}
+                              className="w-full text-left px-3 py-2 text-xs transition-colors"
+                              style={{
+                                background: weekView === v ? "var(--primary-light)" : "transparent",
+                                color: weekView === v ? "var(--primary)" : "var(--foreground)",
+                              }}>
+                              {v}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <ResponsiveContainer width="100%" height={160}>
+                    <AreaChart data={weeklyDataSets[weekView]} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="hoursGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.15} />
+                          <stop offset="95%" stopColor="var(--primary)" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                      <XAxis dataKey="day" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} domain={[0, 10]} />
+                      <Tooltip
+                        contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: "8px", fontSize: "12px" }}
+                        formatter={(v) => [`${v} hrs`, "Hours"]}
+                      />
+                      <Area type="monotone" dataKey="hours" stroke="var(--primary)" strokeWidth={2} fill="url(#hoursGrad)"
+                        dot={{ r: 3, fill: "var(--primary)", strokeWidth: 0 }} activeDot={{ r: 5 }} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div className="rounded-xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-semibold">Overall Progress</span>
+                    <span className="text-sm font-bold" style={{ color: "var(--primary)" }}>{progress}%</span>
+                  </div>
+                  <div className="h-2.5 rounded-full overflow-hidden" style={{ background: "var(--secondary)" }}>
+                    <div className="h-full rounded-full transition-all" style={{ width: `${progress}%`, background: "var(--primary)" }} />
+                  </div>
+                  <div className="flex justify-between mt-2 text-xs" style={{ color: "var(--muted-foreground)" }}>
+                    <span>{hoursRendered} hrs rendered</span>
+                    <span>{remainingHours.toFixed(1)} hrs remaining</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="lg:col-span-2 rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid var(--border)" }}>
+                  <span className="text-sm font-semibold">Recent Evaluations</span>
+                </div>
+                <div className="overflow-y-auto" style={{ maxHeight: "380px" }}>
+                  {evaluationList.length === 0 && (
+                    <div className="px-4 py-8 text-center text-sm" style={{ color: "var(--muted-foreground)" }}>No evaluations yet</div>
+                  )}
+                  {evaluationList.map((ev) => (
+                    <div key={ev.id} className="px-4 py-3" style={{ borderBottom: "1px solid var(--border)" }}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="text-sm font-medium">Evaluation</div>
+                          <div className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>
+                            OJT Coordinator: {ev.profiles?.full_name ?? "—"}
+                          </div>
+                          <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>
+                            {new Date(ev.created_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className="text-sm font-bold" style={{ color: "var(--primary)" }}>{Number(ev.overall_score).toFixed(0)}/100</div>
+                          <div className="mt-1 h-1 w-14 rounded-full overflow-hidden ml-auto" style={{ background: "var(--secondary)" }}>
+                            <div className="h-full rounded-full" style={{ width: `${Number(ev.overall_score)}%`, background: "var(--primary)" }} />
+                          </div>
+                        </div>
+                      </div>
+                      {ev.feedback && (
+                        <p className="text-xs mt-2 italic" style={{ color: "var(--muted-foreground)" }}>"{ev.feedback}"</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ── ATTENDANCE ────────────────────────────────────────────────── */}
+        {!loading && tab === "attendance" && (
+          <>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h1 className="text-xl font-bold">My Attendance</h1>
+                <p className="text-sm mt-0.5" style={{ color: "var(--muted-foreground)" }}>
+                  {internInfo?.companies?.name ?? "—"} · Instructor: {internInfo?.profiles?.full_name ?? "—"}
+                </p>
+              </div>
+              <button
+                onClick={() => (isClockedIn ? setShowAccomplModal(true) : handleClockIn())}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all shrink-0"
+                style={{ background: isClockedIn ? "var(--danger-bg)" : "var(--primary)", color: isClockedIn ? "var(--danger)" : "#fff" }}
+              >
+                <IconClock size={14} />
+                {isClockedIn ? "Clock Out" : "Clock In"}
+              </button>
+            </div>
+
+            {/* Live session card */}
+            {isClockedIn && (
+              <div className="rounded-xl p-4 flex items-center gap-4" style={{ background: "var(--info-bg)", border: "1px solid var(--info)" }}>
+                <div className="w-2.5 h-2.5 rounded-full shrink-0 animate-pulse" style={{ background: "var(--info)" }} />
+                <div className="flex-1">
+                  <div className="text-xs font-semibold mb-0.5" style={{ color: "var(--info)" }}>Session Active</div>
+                  <div className="text-xs" style={{ color: "var(--info)" }}>
+                    Clocked in at {clockInDate ? formatTime(clockInDate) : "—"}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xl font-bold font-mono" style={{ color: "var(--info)" }}>{elapsed}</div>
+                  <div className="text-xs" style={{ color: "var(--info)" }}>elapsed</div>
+                </div>
+              </div>
+            )}
+
+            {/* DTR table */}
+            <div className="rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+              <div className="px-4 py-3 flex items-center justify-between gap-3" style={{ borderBottom: "1px solid var(--border)" }}>
+                <span className="text-sm font-semibold">Daily Time Record (DTR)</span>
+                <div className="flex items-center gap-2">
+                  <div className="flex rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
+                    {dtrFilters.map((f) => (
+                      <button key={f} onClick={() => setDtrFilter(f)}
+                        className="text-xs px-2.5 py-1.5 capitalize"
+                        style={{ background: dtrFilter === f ? "var(--primary)" : "transparent", color: dtrFilter === f ? "#fff" : "var(--muted-foreground)" }}>
+                        {f === "all" ? "All" : f === "week" ? "This Week" : "This Month"}
+                      </button>
+                    ))}
+                  </div>
+                  <button className="text-xs px-3 py-1.5 rounded-lg" style={{ background: "var(--secondary)", color: "var(--foreground)" }}
+                    onClick={() => toast("DTR exported as PDF")}>Export</button>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr style={{ background: "var(--muted)" }}>
+                      {["Date", "Time In", "Time Out", "Hours", "Accomplishments", "Status"].map((h) => (
+                        <th key={h} className="text-left px-4 py-2.5 text-xs font-medium" style={{ color: "var(--muted-foreground)" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredDtr.length === 0 && (
+                      <tr><td colSpan={6} className="px-4 py-6 text-center text-xs" style={{ color: "var(--muted-foreground)" }}>No records for this period.</td></tr>
+                    )}
+                    {filteredDtr.map((d) => {
+                      const isToday = d.log_date === todayStr();
+                      return (
+                        <tr key={d.id} style={{ borderTop: "1px solid var(--border)" }}>
+                          <td className="px-4 py-3 text-xs font-medium whitespace-nowrap">
+                            {new Date(d.log_date).toLocaleDateString("en-US", { month: "short", day: "numeric", weekday: "short" })}
+                            {isToday && (
+                              <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded text-white" style={{ background: "var(--primary)", fontSize: "9px" }}>TODAY</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-xs font-mono">{d.time_in ?? "—"}</td>
+                          <td className="px-4 py-3 text-xs font-mono" style={{ color: !d.time_out ? "var(--muted-foreground)" : undefined }}>
+                            {!d.time_out && isToday && isClockedIn ? (
+                              <span className="font-mono" style={{ color: "var(--info)" }}>{elapsed}</span>
+                            ) : (d.time_out ?? "—")}
+                          </td>
+                          <td className="px-4 py-3 text-xs font-mono">{d.hours ?? "—"}</td>
+                          <td className="px-4 py-3 text-xs max-w-xs" style={{ color: "var(--muted-foreground)" }}>
+                            {d.accomplishment ? <span style={{ color: "var(--foreground)" }}>{d.accomplishment}</span> : "—"}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="text-xs px-2 py-0.5 rounded-full"
+                              style={
+                                isToday && !d.time_out ? { background: "var(--info-bg)", color: "var(--info)" }
+                                : d.verified ? { background: "var(--success-bg)", color: "var(--success)" }
+                                : { background: "var(--warning-bg)", color: "var(--warning)" }
+                              }
+                            >
+                              {isToday && !d.time_out ? "In Progress" : d.verified ? "Verified" : "Pending"}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Exception Request */}
+            <div className="rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+              <div className="px-4 py-3" style={{ borderBottom: "1px solid var(--border)" }}>
+                <div className="flex items-center gap-2">
+                  <IconAlertTriangle size={14} style={{ color: "var(--warning)" }} />
+                  <span className="text-sm font-semibold">Time Log Exception Request</span>
+                </div>
+                <p className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>Submit a correction request for missed or incorrect clock entries.</p>
+              </div>
+              <div className="p-4 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium mb-1" style={{ color: "var(--foreground)" }}>Date</label>
+                    <input type="date" value={exForm.date} onChange={(e) => setExForm((f) => ({ ...f, date: e.target.value }))}
+                      className={inputCls} style={inputStyle} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: "var(--foreground)" }}>Clock In</label>
+                      <input type="time" value={exForm.claimedIn} onChange={(e) => setExForm((f) => ({ ...f, claimedIn: e.target.value }))}
+                        className={inputCls} style={inputStyle} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: "var(--foreground)" }}>Clock Out</label>
+                      <input type="time" value={exForm.claimedOut} onChange={(e) => setExForm((f) => ({ ...f, claimedOut: e.target.value }))}
+                        className={inputCls} style={inputStyle} />
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: "var(--foreground)" }}>Reason / Explanation</label>
+                  <textarea rows={2} value={exForm.reason} onChange={(e) => setExForm((f) => ({ ...f, reason: e.target.value }))}
+                    placeholder="Explain why a correction is needed..."
+                    className="w-full text-sm py-2 px-3 rounded-lg border outline-none resize-none"
+                    style={inputStyle} />
+                </div>
+                <div className="flex justify-end">
+                  <button onClick={submitException} className="text-sm px-4 py-2 rounded-lg font-semibold"
+                    style={{ background: "var(--primary)", color: "#fff" }}>
+                    Submit Request
+                  </button>
+                </div>
+              </div>
+
+              {exceptions.length > 0 && (
+                <div style={{ borderTop: "1px solid var(--border)" }}>
+                  <div className="px-4 py-2.5">
+                    <span className="text-xs font-medium" style={{ color: "var(--muted-foreground)" }}>My Submitted Requests</span>
+                  </div>
+                  {exceptions.map((ex) => (
+                    <div key={ex.id} className="px-4 py-3 flex items-start justify-between gap-3"
+                      style={{ borderTop: "1px solid var(--border)" }}>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-medium">
+                          {new Date(ex.log_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · {ex.claimed_time_in} – {ex.claimed_time_out}
+                        </div>
+                        <div className="text-xs mt-0.5 truncate" style={{ color: "var(--muted-foreground)" }}>{ex.reason}</div>
+                        <div className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>
+                          Submitted: {new Date(ex.created_at).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}
+                        </div>
+                      </div>
+                      <span className="text-xs px-2 py-0.5 rounded-full shrink-0"
+                        style={ex.status === "Approved" ? { background: "var(--success-bg)", color: "var(--success)" }
+                          : ex.status === "Rejected" ? { background: "var(--danger-bg)", color: "var(--danger)" }
+                          : { background: "var(--warning-bg)", color: "var(--warning)" }}>
+                        {ex.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* ── DOCUMENTS ─────────────────────────────────────────────────── */}
+        {!loading && tab === "documents" && (
+          <>
+            <div className="flex items-start justify-between">
+              <div>
+                <h1 className="text-xl font-bold">My Documents</h1>
+                <p className="text-sm mt-0.5" style={{ color: "var(--muted-foreground)" }}>
+                  Pre-internship clearance & required submissions · {docApprovedCount}/{docs.length} Approved
+                </p>
+              </div>
+              {clearanceReady && docs.length > 0 && docApprovedCount === docs.length && (
+                <span className="text-xs px-3 py-1.5 rounded-lg font-semibold" style={{ background: "var(--success-bg)", color: "var(--success)" }}>
+                  Clearance Eligible
+                </span>
+              )}
+            </div>
+
+            {docs.length === 0 ? (
+              <div className="rounded-xl p-8 text-center text-sm" style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--muted-foreground)" }}>
+                No document requirements have been set up for you yet — check with your instructor.
+              </div>
+            ) : (
+              <>
+                {/* Clearance progress */}
+                <div className="rounded-xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-semibold">Clearance Status</span>
+                    <span className="text-sm font-bold" style={{ color: docApprovedCount === docs.length ? "var(--success)" : "var(--primary)" }}>
+                      {docApprovedCount}/{docs.length} Approved
+                    </span>
+                  </div>
+                  <div className="h-2 rounded-full overflow-hidden" style={{ background: "var(--secondary)" }}>
+                    <div className="h-full rounded-full transition-all"
+                      style={{ width: `${(docApprovedCount / docs.length) * 100}%`, background: docApprovedCount === docs.length ? "var(--success)" : "var(--primary)" }} />
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {docs.map((doc) => (
+                    <div key={doc.id} className="rounded-xl p-4" style={{ background: "var(--card)", border: `1px solid ${doc.status === "Needs Revision" ? "#fca5a5" : "var(--border)"}` }}>
+                      <div className="flex items-start gap-3">
+                        <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
+                          style={{ background: doc.status === "Approved" ? "var(--success-bg)" : doc.status === "Needs Revision" ? "var(--danger-bg)" : "var(--warning-bg)" }}>
+                          {doc.status === "Approved"
+                            ? <IconCheck size={16} style={{ color: "var(--success)" }} />
+                            : doc.status === "Needs Revision"
+                            ? <IconAlertTriangle size={16} style={{ color: "var(--danger)" }} />
+                            : <IconFileText size={16} style={{ color: "var(--warning)" }} />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-semibold">{doc.name}</span>
+                            <DocStatusBadge status={doc.status} />
+                          </div>
+                          {doc.file_name && (
+                            <div className="text-xs mt-0.5 flex items-center gap-1" style={{ color: "var(--muted-foreground)" }}>
+                              <IconFileText size={11} /> {doc.file_name}
+                            </div>
+                          )}
+                          {doc.note && (
+                            <div className="text-xs mt-1.5 px-2 py-1.5 rounded-lg" style={{ background: "var(--danger-bg)", color: "var(--danger)" }}>
+                              <strong>Note:</strong> {doc.note}
+                            </div>
+                          )}
+                        </div>
+                        <div className="shrink-0">
+                          <input type="file" accept=".pdf,.doc,.docx,.jpg,.png"
+                            ref={(el) => { fileInputRefs.current[doc.id] = el; }}
+                            onChange={(e) => { const f = e.target.files?.[0]; if (f) handleDocUpload(doc, f); e.target.value = ""; }}
+                            className="hidden" />
+                          <button onClick={() => fileInputRefs.current[doc.id]?.click()}
+                            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg"
+                            style={{ background: doc.status === "Approved" ? "var(--secondary)" : "var(--primary)", color: doc.status === "Approved" ? "var(--muted-foreground)" : "#fff" }}>
+                            <IconUpload size={12} />
+                            {doc.status === "Approved" ? "Replace" : doc.file_name ? "Resubmit" : "Upload"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </>
+        )}
+
+        {/* ── EVALUATIONS ───────────────────────────────────────────────── */}
+        {!loading && tab === "evaluations" && (
+          <>
+            <div>
+              <h1 className="text-xl font-bold">My Evaluations</h1>
+              <p className="text-sm mt-0.5" style={{ color: "var(--muted-foreground)" }}>Performance ratings from your OJT Coordinator</p>
+            </div>
+            <div className="space-y-3">
+              {evaluationList.length === 0 && (
+                <div className="rounded-xl p-8 text-center text-sm" style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--muted-foreground)" }}>
+                  No evaluations yet
+                </div>
+              )}
+              {evaluationList.map((ev) => (
+                <div key={ev.id} className="rounded-xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="text-sm font-semibold">Evaluation</div>
+                      <div className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>
+                        OJT Coordinator: {ev.profiles?.full_name ?? "—"} · {new Date(ev.created_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}
+                      </div>
+                      {ev.feedback && (
+                        <p className="text-sm mt-2 italic" style={{ color: "var(--muted-foreground)" }}>"{ev.feedback}"</p>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="text-2xl font-bold" style={{ color: "var(--primary)" }}>
+                        {Number(ev.overall_score).toFixed(0)}<span className="text-sm font-normal" style={{ color: "var(--muted-foreground)" }}>/100</span>
+                      </div>
+                      <div className="mt-1 h-1.5 w-24 rounded-full overflow-hidden ml-auto" style={{ background: "var(--secondary)" }}>
+                        <div className="h-full rounded-full" style={{ width: `${Number(ev.overall_score)}%`, background: "var(--primary)" }} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* ── REPORTS ───────────────────────────────────────────────────── */}
+        {!loading && tab === "reports" && (
+          <>
+            <div>
+              <h1 className="text-xl font-bold">Reports</h1>
+              <p className="text-sm mt-0.5" style={{ color: "var(--muted-foreground)" }}>Download your personal records and official documents</p>
+            </div>
+
+            {clearanceReady ? (
+              <div className="rounded-xl p-4 flex items-center gap-4" style={{ background: "var(--success-bg)", border: "1px solid var(--success)" }}>
+                <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: "var(--success)", color: "#fff" }}>
+                  <IconAward size={20} />
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm font-semibold" style={{ color: "var(--success)" }}>Certificate of Completion Unlocked</div>
+                  <div className="text-xs mt-0.5" style={{ color: "var(--success)" }}>You have completed {hoursRendered} hrs — exceeding the {hoursRequired}-hr minimum requirement.</div>
+                </div>
+                <button className="text-sm px-3 py-1.5 rounded-lg font-semibold shrink-0" style={{ background: "var(--success)", color: "#fff" }}
+                  onClick={() => toast("Certificate of Completion downloaded")}>
+                  Download
+                </button>
+              </div>
+            ) : (
+              <div className="rounded-xl p-4 flex items-center gap-4" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+                <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: "var(--border)", color: "var(--muted-foreground)" }}>
+                  <IconAward size={20} />
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm font-semibold" style={{ color: "var(--muted-foreground)" }}>Certificate of Completion</div>
+                  <div className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>
+                    Unlocks upon reaching {hoursRequired} required hours. You need {remainingHours.toFixed(1)} more hours.
+                  </div>
+                </div>
+                <div className="h-1.5 w-24 rounded-full overflow-hidden shrink-0" style={{ background: "var(--secondary)" }}>
+                  <div className="h-full rounded-full" style={{ width: `${Math.min(100, progress)}%`, background: "var(--primary)" }} />
+                </div>
+              </div>
+            )}
+
+            <div className="grid lg:grid-cols-2 gap-4">
+              {[
+                { title: "Daily Time Record (DTR)", desc: "Complete attendance log for the semester", icon: <IconClock size={22} /> },
+                { title: "Performance Summary", desc: "All evaluation scores and coordinator ratings", icon: <IconTrendingUp size={22} /> },
+                { title: "Weekly Hours Summary", desc: "Week-by-week hours breakdown", icon: <IconCalendar size={22} /> },
+                { title: "Document Archive", desc: "All uploaded clearance forms", icon: <IconFolder size={22} /> },
+              ].map((r) => (
+                <div key={r.title} className="rounded-xl p-4 flex gap-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                  <span className="shrink-0 mt-0.5" style={{ color: "var(--muted-foreground)" }}>{r.icon}</span>
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold">{r.title}</div>
+                    <div className="text-xs mt-0.5 mb-3" style={{ color: "var(--muted-foreground)" }}>{r.desc}</div>
+                    <div className="flex gap-2">
+                      <button className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{ background: "var(--primary)", color: "#fff" }}
+                        onClick={() => toast(`${r.title} downloaded as PDF`)}>PDF</button>
+                      <button className="text-xs px-3 py-1.5 rounded-lg" style={{ background: "var(--secondary)", color: "var(--foreground)" }}
+                        onClick={() => toast(`${r.title} downloaded as Excel`)}>Excel</button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* ── Accomplishment Modal ─────────────────────────────────────────── */}
+      {showAccomplModal && (
+        <Modal title="Log Today's Accomplishments" onClose={() => setShowAccomplModal(false)} width="480px">
+          <div className="space-y-4">
+            <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>
+              Before clocking out, please briefly describe the tasks you completed during your shift.
+            </p>
+            <div>
+              <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--foreground)" }}>
+                Accomplishments / Tasks Completed <span style={{ color: "var(--danger)" }}>*</span>
+              </label>
+              <textarea
+                rows={5}
+                value={accomplishment}
+                onChange={(e) => setAccomplishment(e.target.value)}
+                placeholder="e.g., Completed API integration for the user auth module, attended team standup, reviewed pull request #45, wrote unit tests for the login flow..."
+                className="w-full text-sm rounded-lg border outline-none resize-none p-3"
+                style={{ borderColor: "var(--border)", background: "var(--card)", color: "var(--foreground)" }}
+                onFocus={(e) => (e.target.style.borderColor = "var(--primary)")}
+                onBlur={(e) => (e.target.style.borderColor = "var(--border)")}
+              />
+              <div className="text-xs mt-1 text-right" style={{ color: "var(--muted-foreground)" }}>
+                {accomplishment.trim().length} / 500 characters
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end pt-1">
+              <button onClick={() => setShowAccomplModal(false)} className="text-sm px-4 py-2 rounded-lg"
+                style={{ background: "var(--secondary)", color: "var(--foreground)" }}>Cancel</button>
+              <button
+                disabled={!accomplishment.trim()}
+                onClick={() => { handleClockOut(accomplishment.trim()); setAccomplishment(""); setShowAccomplModal(false); }}
+                className="text-sm px-4 py-2 rounded-lg font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ background: "var(--danger)", color: "#fff" }}>
+                Clock Out &amp; Save Log
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </Shell>
+  );
+}
