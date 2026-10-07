@@ -1,9 +1,9 @@
-# Phase 0 inspection pack
+# Read-only inspection pack
 
 These files contain read-only inventory, not migrations or repairs. They have
-**not been executed**. Run `01_metadata.sql` then `02_anomalies.sql` only through
+**not been executed against a real project**. Run `01_metadata.sql` then `02_anomalies.sql` only through
 a trusted operator after confirming the project and snapshot. Both wrap SELECTs
-in a read-only transaction and roll back. No app, npm test, or build runs them.
+in a read-only transaction and roll back. No app or build runs inspections.
 Do not execute `supabase/schema.sql` on existing data.
 
 Inspect metadata first: the queries assume the audit's baseline columns. Stop on
@@ -35,4 +35,12 @@ rows have a separately reviewed disposition.
 
 Record a proposal in `REPAIR_PROPOSAL.md` before any DML or constraint validation.
 No real data repair is authorized by this inspection pack. The final ordered
-migration runbook is `../RUNBOOK.md`; Phase 0 contains its preparation gate only.
+migration runbook is `../RUNBOOK.md`.
+
+`03_phase2_attendance.sql` requires the new M01/M02 columns. Run it after M02,
+before M03 and before separately gated M05. It reports duplicate daily/open/
+Pending identities, invalid/missing timestamp and review evidence, future claims,
+unreconciled legacy approvals, audit provenance and bucket settings. This file is
+rehearsed only on disposable synthetic fixtures by the migration-gate tests;
+those tests never contact a real project. It contains SELECTs only. All real
+inspection and any proposed historical repair remain an operator task.

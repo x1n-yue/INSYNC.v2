@@ -1,6 +1,6 @@
 # Remediation decisions
 
-Phases 0-1, 2026-10-07. These are conservative **assumed defaults**, not confirmed
+Phases 0-2, 2026-10-07. These are conservative **assumed defaults**, not confirmed
 institutional policy. Ambiguous behavior is paused at this decision record before
 implementation; work continues using these defaults as requested. Phase 1 implements
 the authority subset and its controlled-operation prerequisites. Update the relevant decision, shared module, migration,
@@ -32,6 +32,10 @@ new rule retroactively by silently rewriting legacy data.
 | D21 | Add trusted clock instants, explicit correction end date, atomic correction review and path-pinned document review in M01 so raw write revocation preserves legitimate flows. | These are Phase 1 authority prerequisites, pulled forward from later phases. Phase 2 still owns trusted audit, review notes/server bulk, reviewed uniqueness/CHECKs, private bucket limits and multi-client concurrency verification. No ambiguous legacy timestamp backfill. |
 | D22 | Legacy announcements with unknown recipient snapshot remain readable only to original author/Active Admin; no recipients inferred from current assignment. New broadcast snapshot freezes active assigned intern UUIDs at send time. | Reassignment changes staff data access, never old-message recipient privacy. Public signup requests only intern; staff requests go through administrator, not a privileged signup option (INS-002/006). |
 | D23 | Existing Admin profile management stays direct RLS+field guard; profile creation belongs to Auth signup, profile deletion unsupported. Self-name edits require Active status. Trusted postgres operator is the sole first-Admin bootstrap exception. | Documented operator procedure uses exact Auth-verified UUID and asserts one returned row; no client-supplied role claim/GUC grants authority. Atomic lifecycle operation remains Phase 4 (INS-001/019). |
+| D24 | Legacy missing/ambiguous clock instants, end dates, reviewer evidence and inconsistent hours are preserved. M03 blocks duplicate daily/open/Pending identities; NOT VALID checks enforce new/updated rows. M05 historical validation is a separate gate after explicit per-row review. | No timestamps inferred from old time-only values, no automatic canonical row, hours rounding or data repair. Failure leaves original rows unchanged. Instants retain microseconds; numeric hours use DB elapsed seconds / 3600, display rounding only (INS-011/012/016). |
+| D25 | New audit source is database-trigger-v2; NULL/other source remains legacy/unverified. auth.uid() supplies actor and clock_timestamp() supplies time. A NULL actor means system/trusted SQL context, never an invented human identity. | Audit 11 business tables with minimal changed-field/status/assignment metadata. No-op/zero-row writes create no event. Direct browser audit writes denied, mandatory audit failures abort mutation; legacy events never backfilled as trusted (INS-009). |
+| D26 | Bulk correction review accepts 1-100 UUIDs, deduplicates, orders intern/request locks, returns one actual outcome per unique request. Each item is a subtransaction; failed attendance or audit rolls that entire item back. Rejection note required; optional approval note, <=500 characters. | Mixed batches preserve failed selections/note draft. Missing/duplicate/inconsistent response or transport failure means refresh before retry; commit may have happened if its response was lost. One item's success does not certify the batch (INS-010/032/039). |
+| D27 | Open-session reads are independent of today's date and the paginated history; an open legacy row lacking a trusted instant is unknown, not a counted Active Now session or invented elapsed duration. | Clock display uses Manila; elapsed device clock is informational. Negative device elapsed time says check device clock. Server RPC is the only source of date, transition and duration authority. Legacy session requires correction (INS-012). |
 
 Tooling choice: standalone Node Vitest configuration keeps application build,
 runtime, dev host and source behavior unchanged. Use patched Vitest 4.1.11 instead
@@ -49,3 +53,13 @@ SQL is applied exclusively to freshly constructed synthetic Auth/Storage/domain
 fixtures. No remote DB/Auth/Storage service is contacted and bootstrap is never
 read/executed by the harness. These tests verify SQL locally, not deployed policy
 metadata, PostgREST behavior, signed URLs or cryptographic JWT validation.
+
+Phase 2 adds pinned dev-only embedded-postgres 17.10.0-beta.17 binaries and pg
+8.23.1. A custom harness starts a fresh native Postgres 17.10 cluster in ignored
+`.test-postgres/synthetic-*`, random loopback-only port and ephemeral synthetic
+password. It accepts no external URL or environment credentials, creates no OS
+user/service, hides child windows and verifies cleanup paths. No existing database
+or bootstrap is read. Tests require platform binaries and an ordinary OS user
+(Postgres refuses root); do not enable OS-user creation to bypass that limitation.
+Native concurrency is observed via pg_stat_activity advisory-lock waits before
+releasing contenders. This is local DB evidence, not deployed Supabase API proof.

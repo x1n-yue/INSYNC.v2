@@ -10,6 +10,7 @@ import {
 } from "recharts";
 import { supabase } from "../lib/supabaseClient";
 import { manilaDate, recordRpc } from "../lib/authority";
+import { elapsedSession, formatBusinessDate, formatClockTime, isOpenSession } from "../lib/attendance";
 import Shell from "./Shell";
 import Modal from "./Modal";
 import { useToast } from "./Toast";
@@ -39,11 +40,7 @@ const weekViews = ["Weekly", "Monthly", "All Time"];
 const dtrFilters = ["all", "week", "month"];
 
 function formatTime(d) {
-  const h = d.getHours();
-  const m = d.getMinutes();
-  const ampm = h >= 12 ? "PM" : "AM";
-  const h12 = h % 12 || 12;
-  return `${String(h12).padStart(2, "0")}:${String(m).padStart(2, "0")} ${ampm}`;
+  return formatClockTime(d);
 }
 
 function StatCard({ icon, iconBg, iconColor, label, value, sub }) {
@@ -81,6 +78,7 @@ export default function InternDashboard({ profile, onLogout }) {
   const [tab, setTab] = useState("dashboard");
   const [loading, setLoading] = useState(true);
   const [clockBusy, setClockBusy] = useState(false);
+  const [clockLoadError, setClockLoadError] = useState(null);
   const [correctionBusy, setCorrectionBusy] = useState(false);
   const [internInfo, setInternInfo] = useState(null); // { required_hours, companies:{name}, profiles:{full_name} }
   const [dtr, setDtr] = useState([]); // attendance_logs, newest first
@@ -106,7 +104,7 @@ export default function InternDashboard({ profile, onLogout }) {
 
   const loadAll = async () => {
     setLoading(true);
-    const [{ data: internRow }, { data: attendanceRows }, { data: evalRows }, { data: exceptionRows }, { data: docRows }] =
+    const [{ data: internRow }, { data: attendanceRows }, { data: evalRows }, { data: exceptionRows }, { data: docRows }, { data: openRow, error: openError }] =
       await Promise.all([
         supabase
           .from("interns")
@@ -121,6 +119,7 @@ export default function InternDashboard({ profile, onLogout }) {
           .order("created_at", { ascending: false }),
         supabase.from("attendance_exceptions").select("*").eq("intern_id", profile.id).order("created_at", { ascending: false }),
         supabase.from("documents").select("*").eq("intern_id", profile.id).order("name"),
+        supabase.from("attendance_logs").select("*").eq("intern_id", profile.id).is("time_out", null).maybeSingle(),
       ]);
     const nameIds = [...new Set([internRow?.instructor_id, ...(evalRows ?? []).map((e) => e.evaluator_id)].filter(Boolean))];
     const { data: nameRows, error: nameError } = await supabase.rpc("related_profile_names", { p_ids: nameIds });
@@ -131,7 +130,9 @@ export default function InternDashboard({ profile, onLogout }) {
     }
     const names = Object.fromEntries((nameRows ?? []).map((p) => [p.id, { full_name: p.full_name }]));
     setInternInfo(internRow ? { ...internRow, profiles: names[internRow.instructor_id] } : null);
-    setDtr(attendanceRows ?? []);
+    setClockLoadError(openError?.message ?? null);
+    const history = attendanceRows ?? [];
+    setDtr(openRow && !history.some((row) => row.id === openRow.id) ? [openRow, ...history] : history);
     setEvaluationList((evalRows ?? []).map((e) => ({ ...e, profiles: names[e.evaluator_id] })));
     setExceptions(exceptionRows ?? []);
     setDocs(docRows ?? []);
@@ -144,28 +145,24 @@ export default function InternDashboard({ profile, onLogout }) {
   }, [profile.id]);
 
   const todayRow = dtr.find((d) => d.time_in && !d.time_out) ?? dtr.find((d) => d.log_date === todayStr());
-  const clockInDate = todayRow?.clocked_in_at ? new Date(todayRow.clocked_in_at) : null;
+  const clockInDate = isOpenSession(todayRow) ? new Date(todayRow.clocked_in_at) : null;
   const isClockedIn = Boolean(todayRow && todayRow.time_in && !todayRow.time_out);
 
   // Live elapsed timer
   useEffect(() => {
-    if (!isClockedIn || !clockInDate) {
-      setElapsed("00:00:00");
+    if (!isClockedIn || !isOpenSession(todayRow)) {
+      setElapsed(isClockedIn ? "Legacy session · correction required" : "00:00:00");
       return;
     }
     const id = setInterval(() => {
-      const diff = Date.now() - clockInDate.getTime();
-      const h = Math.floor(diff / 3600000);
-      const m = Math.floor((diff % 3600000) / 60000);
-      const s = Math.floor((diff % 60000) / 1000);
-      setElapsed(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`);
+      setElapsed(elapsedSession(todayRow));
     }, 1000);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isClockedIn, clockInDate?.getTime()]);
+  }, [isClockedIn, todayRow?.clocked_in_at]);
 
   const handleClockIn = async () => {
-    if (clockBusy) return;
+    if (clockBusy || clockLoadError) return;
     setClockBusy(true);
     try {
       const result = await recordRpc(supabase, "clock_in");
@@ -176,7 +173,7 @@ export default function InternDashboard({ profile, onLogout }) {
   };
 
   const handleClockOut = async (accomp) => {
-    if (!todayRow || clockBusy) return { ok: false };
+    if (!todayRow || clockBusy || clockLoadError) return { ok: false };
     setClockBusy(true);
     try {
       const result = await recordRpc(supabase, "clock_out", { p_id: todayRow.id, p_accomplishment: accomp });
@@ -232,11 +229,11 @@ export default function InternDashboard({ profile, onLogout }) {
 
   const weeklyDataSets = useMemo(() => {
     const withHours = [...dtr].filter((d) => d.hours != null).sort((a, b) => a.log_date.localeCompare(b.log_date));
-    const byDay = withHours.slice(-8).map((d) => ({ day: new Date(d.log_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }), hours: Number(d.hours) }));
+    const byDay = withHours.slice(-8).map((d) => ({ day: formatBusinessDate(d.log_date, { month: "short", day: "numeric" }), hours: Number(d.hours) }));
 
     const byMonthMap = {};
     withHours.forEach((d) => {
-      const key = new Date(d.log_date).toLocaleDateString("en-US", { month: "short" });
+      const key = formatBusinessDate(d.log_date, { month: "short" });
       byMonthMap[key] = byMonthMap[key] ? { total: byMonthMap[key].total + Number(d.hours), count: byMonthMap[key].count + 1 } : { total: Number(d.hours), count: 1 };
     });
     const byMonth = Object.entries(byMonthMap).map(([day, v]) => ({ day, hours: Math.round((v.total / v.count) * 10) / 10 }));
@@ -359,7 +356,7 @@ export default function InternDashboard({ profile, onLogout }) {
                             OJT Coordinator: {ev.profiles?.full_name ?? "—"}
                           </div>
                           <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>
-                            {new Date(ev.created_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}
+                            {new Date(ev.created_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" , timeZone: "Asia/Manila" })}
                           </div>
                         </div>
                         <div className="text-right shrink-0">
@@ -392,7 +389,7 @@ export default function InternDashboard({ profile, onLogout }) {
               </div>
               <button
                 onClick={() => (isClockedIn ? setShowAccomplModal(true) : handleClockIn())}
-                disabled={clockBusy || Boolean(todayRow?.time_out)}
+                disabled={clockBusy || Boolean(clockLoadError) || Boolean(todayRow?.time_out)}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all shrink-0"
                 style={{ background: isClockedIn ? "var(--danger-bg)" : "var(--primary)", color: isClockedIn ? "var(--danger)" : "#fff" }}
               >
@@ -402,6 +399,9 @@ export default function InternDashboard({ profile, onLogout }) {
             </div>
 
             {/* Live session card */}
+            {clockLoadError && <p role="alert" className="text-xs" style={{ color: "var(--danger)" }}>
+              Clock state unavailable: {clockLoadError}. <button onClick={loadAll} className="underline">Retry</button>
+            </p>}
             {isClockedIn && (
               <div className="rounded-xl p-4 flex items-center gap-4" style={{ background: "var(--info-bg)", border: "1px solid var(--info)" }}>
                 <div className="w-2.5 h-2.5 rounded-full shrink-0 animate-pulse" style={{ background: "var(--info)" }} />
@@ -454,7 +454,7 @@ export default function InternDashboard({ profile, onLogout }) {
                       return (
                         <tr key={d.id} style={{ borderTop: "1px solid var(--border)" }}>
                           <td className="px-4 py-3 text-xs font-medium whitespace-nowrap">
-                            {new Date(d.log_date).toLocaleDateString("en-US", { month: "short", day: "numeric", weekday: "short" })}
+                            {formatBusinessDate(d.log_date, { month: "short", day: "numeric", weekday: "short" })}
                             {isToday && (
                               <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded text-white" style={{ background: "var(--primary)", fontSize: "9px" }}>TODAY</span>
                             )}
@@ -547,11 +547,13 @@ export default function InternDashboard({ profile, onLogout }) {
                       style={{ borderTop: "1px solid var(--border)" }}>
                       <div className="flex-1 min-w-0">
                         <div className="text-xs font-medium">
-                          {new Date(ex.log_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · {ex.claimed_time_in} – {ex.claimed_time_out}
+                          {formatBusinessDate(ex.log_date, { month: "short", day: "numeric" })} · {ex.claimed_time_in} – {ex.claimed_time_out}
+                          {ex.claimed_end_date && ex.claimed_end_date !== ex.log_date && <> (ends {formatBusinessDate(ex.claimed_end_date)})</>}
                         </div>
                         <div className="text-xs mt-0.5 truncate" style={{ color: "var(--muted-foreground)" }}>{ex.reason}</div>
+                        {ex.review_note && <div className="text-xs mt-1 break-words">Review note: {ex.review_note}</div>}
                         <div className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>
-                          Submitted: {new Date(ex.created_at).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}
+                          Submitted: {new Date(ex.created_at).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" , timeZone: "Asia/Manila" })}
                         </div>
                       </div>
                       <span className="text-xs px-2 py-0.5 rounded-full shrink-0"
@@ -673,7 +675,7 @@ export default function InternDashboard({ profile, onLogout }) {
                     <div className="flex-1">
                       <div className="text-sm font-semibold">Evaluation</div>
                       <div className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>
-                        OJT Coordinator: {ev.profiles?.full_name ?? "—"} · {new Date(ev.created_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}
+                        OJT Coordinator: {ev.profiles?.full_name ?? "—"} · {new Date(ev.created_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" , timeZone: "Asia/Manila" })}
                       </div>
                       {ev.feedback && (
                         <p className="text-sm mt-2 italic" style={{ color: "var(--muted-foreground)" }}>"{ev.feedback}"</p>

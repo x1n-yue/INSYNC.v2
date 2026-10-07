@@ -16,11 +16,25 @@ describe("controlled RPC client outcomes", () => {
     expect((await recordRpc({ rpc: async () => ({ data: { id: "foreign" } }) }, "review_document", { p_id: "own" })).ok).toBe(false);
   });
   it("bulk counts actual committed items, keeps item-specific failures and deduplicates ids", async () => {
-    const rpc = vi.fn(async (_name, args) => args.p_id === "ok" ? { data: { id: "ok", status: "Approved" } } : { error: { message: "conflict" } });
+    const rpc = vi.fn(async () => ({ data: [
+      { id: "bad", ok: false, error: "conflict", data: null },
+      { id: "ok", ok: true, error: null, data: { id: "ok", status: "Approved" } },
+    ] }));
     const results = await reviewCorrections({ rpc }, ["ok", "bad", "ok"], "Approved");
-    expect(rpc).toHaveBeenCalledTimes(2);
+    expect(rpc).toHaveBeenCalledTimes(1);
     expect(results.filter((r) => r.ok)).toHaveLength(1);
     expect(results[1]).toMatchObject({ id: "bad", ok: false, error: "conflict" });
-    expect(rpc.mock.calls[0]).toEqual(["review_exception", { p_id: "ok", p_decision: "Approved" }]);
+    expect(rpc.mock.calls[0]).toEqual(["review_exceptions", { p_ids: ["ok", "bad"], p_decision: "Approved", p_note: null }]);
+  });
+  it.each([null, [], [{ id: "foreign", ok: true, data: { id: "foreign", status: "Approved" } }],
+    [{ id: "ok", ok: true, data: null }], [{ id: "ok", ok: true, data: { id: "ok", status: "Pending" } }],
+    [{ id: "ok", ok: false }]])("rejects incomplete or dishonest bulk results %j", async (data) => {
+    expect((await reviewCorrections({ rpc: async () => ({ data }) }, ["ok"], "Approved"))[0].ok).toBe(false);
+  });
+  it("reports transport ambiguity as failure and passes a rejection note unchanged", async () => {
+    const rpc = vi.fn(async () => { throw new Error("offline"); });
+    expect((await reviewCorrections({ rpc }, ["one", "two"], "Rejected", "Review evidence"))
+      .every((row) => !row.ok && row.error === "offline")).toBe(true);
+    expect(rpc.mock.calls[0][1].p_note).toBe("Review evidence");
   });
 });

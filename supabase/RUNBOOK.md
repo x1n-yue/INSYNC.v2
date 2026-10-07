@@ -1,7 +1,7 @@
 # Nondestructive remediation runbook
 
-Phases 0-1, 2026-10-07. **M01 authored and rehearsed in synthetic in-memory
-Postgres only; no real-project migration applied.** Later migrations are pending.
+Phases 0-2, 2026-10-07. **M01-M05 authored and rehearsed only in fresh synthetic
+in-memory/native Postgres; no real-project migration applied.** Later phases pending.
 This session will not execute SQL against a real project. Every future rollout
 requires operator review of prerequisites, anomaly disposition and live checks.
 
@@ -18,7 +18,7 @@ requires operator review of prerequisites, anomaly disposition and live checks.
 4. Review `../DECISIONS.md` assumptions. Stop constraint deployment on unresolved
    anomalies. CHECKs use NOT VALID then VALIDATE where appropriate; UNIQUE requires
    explicit duplicate resolution before index creation. Preserve original history.
-5. Rehearse `migrations/M01_authority.sql` first; M02 and later files are pending.
+5. Rehearse `migrations/M01_authority.sql` first, then the Phase 2 gates below.
    Apply only to the reviewed baseline, once, in the file's transaction. The exact
    order/file list will be extended as phases land;
    no glob execution or bootstrap replay. M01 authority precedes trusted audit,
@@ -55,8 +55,8 @@ Privately review approval provenance of every existing Admin/Instructor and all
 known demo accounts using the read-only privileged-profile inventory. A stored
 Active role cannot prove that prior self-escalation was authorized. Propose any
 account remediation separately; M01 never silently demotes legacy accounts.
-The existing document bucket's public flag/limits are intentionally unchanged until
-Phase 2; do not claim private-object authorization is sufficient for public delivery.
+M01 leaves the existing document bucket flag/limits unchanged; M04 now supplies
+the separate explicit private-bucket repair. Policies alone do not deny public delivery.
 
 Coordinate the migration and client build: the new client requires `my_profile`,
 clock/correction/review/upload RPCs and restricted staff-name RPC. Force older
@@ -85,8 +85,62 @@ seeded by migrations. Preserve the extension/history; later lifecycle work handl
 retirement. No user-controlled Auth metadata or request claim can bootstrap Admin.
 
 Subsequent approvals use an existing Active Admin, enforced independently in DB.
-M02 will supply trusted audit generation; until then bootstrap/critical transition
-recording is an explicit operator task. Do not promote arbitrary matching emails
+M02 supplies trusted audit generation. Bootstrap before M02 still requires private
+operator recording; after M02 a NULL actor is explicitly system/trusted SQL, not
+a named human. Keep out-of-band operator approval. Do not promote arbitrary matching emails
 or run a broadly filtered UPDATE. The trusted-role exception in profile guard is
 `current_user='postgres'`; anon/authenticated must have no membership allowing that
 role or any equivalent BYPASSRLS/owner privilege.
+
+## Phase 2 ordered rehearsal / deployment gates
+
+No agent-executed real-project steps. Operator review and separately authorized
+rollout are required. Rehearse these exact files on disposable data, once:
+
+1. M01 must already be committed and catalog verified. Inspect current owners,
+   grants, trigger definitions and unexpected public functions/views again.
+2. `migrations/M02_trusted_audit.sql`: revoke raw/column audit writes; install
+   mandatory audit on 11 business tables; add review note and locked single/bulk
+   review. No old audit rows changed. Confirm all 11 triggers enabled, helper
+   EXECUTE denied to API roles and audit SELECT Admin-only. Coordinate client
+   upgrade: it requires `review_exceptions`, and never writes audit events.
+3. Read `inspection/03_phase2_attendance.sql`. Stop M03 for any duplicate daily,
+   open or Pending identity. Privately approve a per-group proposal from
+   `inspection/REPAIR_PROPOSAL.md`; author a separate versioned repair only after
+   review. This repository contains no such repair and chooses no canonical row.
+4. `migrations/M03_attendance_integrity.sql`: maintenance-window locks, duplicate
+   preflight, unique daily/open/Pending indexes, NOT VALID checks and future-write
+   triggers. Clock RPC time is captured after acquiring locks. Check installed
+   unique indexes, CHECK `convalidated=false`, enabled future triggers and RPC
+   grants/owners/search paths. All original rows remain unchanged. Invalid old
+   rows may reject subsequent updates until an explicit reviewed correction.
+5. `migrations/M04_private_documents_bucket.sql`: explicit UPDATE of the existing
+   bucket to private, 10 MiB, PDF/JPEG/PNG. Missing bucket aborts. Unrelated buckets
+   and existing objects untouched. **Independent of M03:** if M03 is blocked by
+   legacy anomalies, M04 may be separately reviewed/rehearsed after M01 without
+   waiting for data repair. Never restore public delivery as a compatibility fix.
+6. **Deferred gate**, `migrations/M05_validate_attendance.sql`: only after M03,
+   rerunning inspection and separately reviewing all historical anomalies and
+   any expressly approved per-row repairs. No timestamp/reviewer guessing. It
+   rejects future history/unreconciled approvals, then VALIDATEs four CHECKs.
+   Failure preserves NOT VALID enforcement and the original rows. If blocked,
+   record historical validation pending; do not bypass or claim certified history.
+7. Run catalog queries in each file and `tests/PHASE2.md`'s disposable live checks.
+   Reconcile before/after domain counts/object inventory and only expected new
+   audit events. Confirm a failed audit causes failed business mutation; no fake
+   Approved state, missing reconciliation, or false bulk success. Check UTC/Manila
+   midnight, overnight, repeated transitions and actual two-client races.
+
+Rollback: an error inside a file's transaction requires ROLLBACK; nothing in that
+file should commit. After commit, disable affected flows if necessary and use a
+reviewed forward migration. Preserve audit/evidence and private bucket settings.
+Never disable required audit, weaken RLS, remove uniqueness to admit duplicates,
+or reopen public Storage to restore a UI flow. Use provider restore only on
+disposable rehearsal data with explicit counts/evidence verification.
+
+Limits: no real bucket/JWT/API/SDK race tests ran here; native tests use synthetic
+auth.uid()/Storage metadata, not Supabase services. Signed URL UI still Phase 4.
+Audit pagination/read outages, Admin lifecycle atomicity and other zero-row
+handlers remain later phases. Legacy authorized staff provenance cannot be proven
+from stored role/status or a new audit source. Existing public URL consumers may
+lose access after M04; test authorized access rather than preserving public URLs.

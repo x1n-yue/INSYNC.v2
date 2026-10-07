@@ -24,3 +24,18 @@ redacted counts and decisions here. No reviewed repair exists yet. CHECKs should
 use NOT VALID then VALIDATE when supported; UNIQUE cannot be marked NOT VALID and
 requires conflict review before index creation. No migrations are supplied in
 Phase 0 and no SQL may be run against a real project by this remediation session.
+
+Phase 2 additions (still no approved real-row repair):
+
+- Multiple open sessions block M03 even on distinct dates. Obtain evidence and
+  explicit disposition for every session; no automatic closure or chosen winner.
+- Missing instants/end dates and inconsistent durations/review evidence block
+  M05. M03 enforces new/updated rows with NOT VALID CHECKs while leaving history
+  unchanged. An attempted update of a bad legacy row may now fail until reviewed.
+- Approved legacy corrections lacking valid verified attendance block M05;
+  review reconciliation evidence rather than inventing attendance/reviewer/time.
+- Legacy audit rows retain NULL source and the UI labels provenance unverified;
+  no conversion of historic client claims into trusted database events.
+- M04 preserves existing objects, makes the existing bucket private and limits
+  future uploads. Review oversized/unsupported old objects and external public
+  URL consumers privately; no file deletion, automatic relink or public rollback.

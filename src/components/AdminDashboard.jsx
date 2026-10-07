@@ -42,7 +42,7 @@ const inputCls = "w-full text-sm px-3 py-2.5 rounded-lg border outline-none tran
 const inputStyle = { borderColor: "var(--border)", background: "var(--muted)", color: "var(--foreground)" };
 
 const fmtDate = (iso) =>
-  iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
+  iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "Asia/Manila" }) : "—";
 
 export default function AdminDashboard({ profile, onLogout }) {
   const { toast } = useToast();
@@ -53,7 +53,6 @@ export default function AdminDashboard({ profile, onLogout }) {
   const [companies, setCompanies] = useState([]);
   const [sections, setSections] = useState([]);
   const [years, setYears] = useState([]);
-  const [backupRunning, setBackupRunning] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // User modal
@@ -79,7 +78,7 @@ export default function AdminDashboard({ profile, onLogout }) {
     setLoading(true);
     const [
       { data: profiles },
-      { data: auditRows },
+      { data: auditRows, error: auditError },
       { data: companyRows },
       { data: sectionRows },
       { data: yearRows },
@@ -95,6 +94,7 @@ export default function AdminDashboard({ profile, onLogout }) {
       supabase.from("documents").select("intern_id"),
     ]);
     setUsers(profiles ?? []);
+    if (auditError) toast(`Unable to load audit history: ${auditError.message}`, "error");
     setLogs(auditRows ?? []);
     setCompanies(companyRows ?? []);
     setSections(sectionRows ?? []);
@@ -116,6 +116,7 @@ export default function AdminDashboard({ profile, onLogout }) {
 
   useEffect(() => {
     loadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const filtered = users.filter(
@@ -163,7 +164,7 @@ export default function AdminDashboard({ profile, onLogout }) {
       )
     );
     const internName = internsForTab.find((i) => i.id === internId)?.full_name ?? "Intern";
-    addLog("Intern assignment updated", internName);
+    await refreshAudit();
     toast(`${internName} updated`);
   };
 
@@ -177,17 +178,18 @@ export default function AdminDashboard({ profile, onLogout }) {
     if (error) return toast(error.message, "error");
     setDocCounts((prev) => ({ ...prev, [internId]: standardDocChecklist.length }));
     const internName = internsForTab.find((i) => i.id === internId)?.full_name ?? "Intern";
-    addLog("Standard document checklist attached", internName);
+    await refreshAudit();
     toast(`Document checklist attached for ${internName}`);
   };
 
-  const addLog = async (action, detail) => {
-    const { data } = await supabase
-      .from("audit_logs")
-      .insert({ actor_id: profile.id, actor_name: profile.full_name, action, detail })
-      .select()
-      .single();
-    if (data) setLogs((l) => [data, ...l]);
+  const refreshAudit = async () => {
+    try {
+      const { data, error } = await supabase.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(50);
+      if (error) throw error;
+      setLogs(data ?? []);
+    } catch (error) {
+      toast(`Change committed, but audit history could not refresh: ${error.message}`, "error");
+    }
   };
 
   // ── User modal handlers ──
@@ -254,7 +256,7 @@ export default function AdminDashboard({ profile, onLogout }) {
       }
     }
 
-    addLog("User account updated", `${userForm.name} (${userForm.role})`);
+    await refreshAudit();
     toast(`${userForm.name} updated`);
     setUserModal({ open: false, editing: null });
   };
@@ -266,7 +268,7 @@ export default function AdminDashboard({ profile, onLogout }) {
       return;
     }
     setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, status: next } : x)));
-    addLog(`User ${next === "Inactive" ? "deactivated" : "reactivated"}`, u.full_name);
+    await refreshAudit();
     toast(`${u.full_name} ${next === "Inactive" ? "deactivated" : "reactivated"}`);
   };
 
@@ -303,24 +305,16 @@ export default function AdminDashboard({ profile, onLogout }) {
       toast("Entry added");
     }
     setMasterModal(null);
+    await refreshAudit();
   };
   const removeMaster = async (table, row) => {
     const { error } = await supabase.from(table).delete().eq("id", row.id);
     if (error) return toast(error.message, "error");
     setRowsFor(table, (prev) => prev.filter((r) => r.id !== row.id));
     toast("Entry removed");
+    await refreshAudit();
   };
 
-  // ── Backup (simulated — actual DB backups are managed in the Supabase dashboard) ──
-  const runBackup = () => {
-    setBackupRunning(true);
-    toast("Backup started…", "info");
-    setTimeout(() => {
-      setBackupRunning(false);
-      addLog("Database backup completed", `Snapshot: DB-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-manual`);
-      toast("Backup completed successfully");
-    }, 2500);
-  };
 
   const stats = [
     { label: "Total Users", value: `${users.length}`, sub: `${users.filter((u) => u.status === "Active").length} active`, icon: <IconUsers size={18} />, iconBg: "#eff6ff", iconColor: "#2563eb" },
@@ -342,7 +336,7 @@ export default function AdminDashboard({ profile, onLogout }) {
               </p>
             </div>
             <span className="text-xs px-2.5 py-1 rounded-lg" style={{ background: "var(--secondary)", color: "var(--muted-foreground)" }}>
-              {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+              {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "Asia/Manila" })}
             </span>
           </div>
 
@@ -389,10 +383,10 @@ export default function AdminDashboard({ profile, onLogout }) {
                   {logs.slice(0, 5).map((l) => (
                     <div key={l.id} className="px-4 py-3 flex gap-3" style={{ borderBottom: "1px solid var(--border)" }}>
                       <span className="font-mono text-xs shrink-0 mt-0.5 w-20" style={{ color: "var(--muted-foreground)" }}>
-                        {new Date(l.created_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                        {new Date(l.created_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Manila" })}
                       </span>
                       <div>
-                        <div className="text-xs font-medium">{l.action}</div>
+                        <div className="text-xs font-medium">{l.source === "database-trigger-v2" ? "DB recorded" : "Legacy (provenance unverified)"} | {l.action}</div>
                         <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>{l.detail}</div>
                       </div>
                     </div>
@@ -569,14 +563,9 @@ export default function AdminDashboard({ profile, onLogout }) {
                     <button
                       className="text-sm px-4 py-2 rounded-lg font-medium"
                       style={{ background: "var(--primary)", color: "#fff" }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        addLog("Bulk import processed", importFile);
-                        toast(`${importFile} imported successfully`);
-                        setImportFile(null);
-                      }}
+                      disabled
                     >
-                      Process Import
+                      Import unavailable
                     </button>
                   </>
                 ) : (
@@ -621,11 +610,11 @@ export default function AdminDashboard({ profile, onLogout }) {
               {logs.map((l) => (
                 <div key={l.id} className="px-4 py-3 flex gap-4 items-start" style={{ borderBottom: "1px solid var(--border)" }}>
                   <span className="font-mono text-xs shrink-0 mt-0.5 w-20" style={{ color: "var(--muted-foreground)" }}>
-                    {new Date(l.created_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                    {new Date(l.created_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Manila" })}
                   </span>
                   <div className="w-36 shrink-0 text-xs font-medium truncate">{l.actor_name}</div>
                   <div className="flex-1">
-                    <div className="text-sm">{l.action}</div>
+                    <div className="text-sm">{l.source === "database-trigger-v2" ? "DB recorded" : "Legacy (provenance unverified)"} | {l.action}</div>
                     <div className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>{l.detail}</div>
                   </div>
                 </div>
@@ -639,21 +628,21 @@ export default function AdminDashboard({ profile, onLogout }) {
               <div className="rounded-xl p-5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                 <h3 className="text-sm font-semibold mb-4">Database Backup</h3>
                 <p className="text-xs mb-4" style={{ color: "var(--muted-foreground)" }}>
-                  Supabase manages automatic Postgres backups for your project. This
-                  panel triggers a manual snapshot event and logs it — configure
-                  retention and point-in-time recovery in the Supabase dashboard.
+                  Backup status is not connected. An authorized operator must verify
+                  backup availability, retention and restore capability in the
+                  Supabase dashboard. This application does not create snapshots.
                 </p>
-                <button onClick={runBackup} disabled={backupRunning}
+                <button disabled
                   className="w-full py-2.5 rounded-lg text-sm font-medium disabled:opacity-60 transition-opacity"
                   style={{ background: "var(--primary)", color: "#fff" }}>
-                  {backupRunning ? "Running backup…" : "Run Manual Backup"}
+                  Manual backup unavailable
                 </button>
               </div>
               <div className="rounded-xl p-5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                 <h3 className="text-sm font-semibold mb-4">Role Permissions</h3>
                 <div className="space-y-2">
                   {[
-                    { role: "System Admin", perms: ["Full access", "User management", "Audit logs", "Backup"] },
+                    { role: "System Admin", perms: ["Full access", "User management", "Audit logs"] },
                     { role: "Instructor", perms: ["View & consolidate evaluations", "Generate reports", "View attendance", "Manage alerts"] },
                     { role: "Intern", perms: ["Log attendance", "View evaluations", "View progress"] },
                   ].map((r) => (

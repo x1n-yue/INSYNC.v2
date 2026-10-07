@@ -1,17 +1,18 @@
 # INSync remediation progress
 
-Updated 2026-10-07, Phases 0-1. Owner: repository remediation agent. Both audit
+Updated 2026-10-07, Phases 0-2. Owner: repository remediation agent. Both audit
 and checklist read in full before edits. Starting HEAD `75998c0` (the audit refers
 to an earlier source revision); working tree was clean. No applicable AGENTS.md
 found in workspace/ancestor locations. Phase 0 left application behavior unchanged;
-Phase 1 changes affected UI and authors M01. Bootstrap, legacy patch and Vite config
+Phases 1-2 change affected UI and author M01-M05. Bootstrap, legacy patch and Vite config
 remain unchanged. No remote Supabase/real-project SQL execution.
 
-**Phases 0-1 complete; Phase 1 local verification recorded below.**
-INS-001..008 are **Fixed-pending-live-verification**; remaining findings stay open.
+**Phases 0-2 complete; local verification recorded below.**
+INS-001..012, INS-015/016 are **Fixed-pending-live-verification** (14 findings);
+25 findings remain Not-fixed with the reasons/phases below.
 Tests that reproduce defects must not be interpreted as fixes or deployed security
 evidence. Defaults are recorded in `DECISIONS.md` and can be revised before their
-phase. Continue only on the user's “continue” after the Phase 1 commit; Phase 2 has not started.
+phase. Stop after the Phase 2 commit; Phase 3 starts only on the user's “continue.”
 
 ## Phase 0 artifacts and checks
 
@@ -96,6 +97,54 @@ rubric authority remain Phase 4; auth/read error handling and some zero-row writ
 remain Phase 5. Extra live catalog drift causes M01 preflight to stop for review.
 Local SQL success does not establish deployed authorization or production readiness.
 
+## Phase 2 artifacts and checks
+
+- `M02_trusted_audit.sql`: mandatory row-trigger audit across 11 business tables,
+  trusted UID/time/source, protected INSERT and non-public trigger helper. Captures
+  changed fields, role/status/assignment values and master labels without whole
+  profile/file snapshots. Legacy audit remains explicitly unverified. Failed audit
+  aborts the mutation; no-op/zero-row writes generate no event.
+- M02 single review locks caller status/assignment/request and Pending transition,
+  reconciles existing/missing attendance, stores required rejection/optional
+  approval note, returns actual row. Server bulk uses per-item subtransactions
+  and consistent intern/request lock order; no success for failed attendance/audit.
+- `M03_attendance_integrity.sql`: daily/open/Pending unique identities after a
+  duplicate preflight; NOT VALID interval/verification/reason/review CHECKs; future
+  write trigger; server clock time captured after serialization; guarded row-ID
+  closure. `M05_validate_attendance.sql` is a separately deferred historical gate,
+  never a repair or timestamp guess. Any legacy anomaly remains an operator task.
+- `M04_private_documents_bucket.sql`: separate explicit existing-bucket UPDATE,
+  private/10 MiB/PDF-JPEG-PNG; no object cleanup. Independent of M03 legacy gate.
+- `authority.js`, `attendance.js`, dashboards: strict server bulk outcomes,
+  rejection-note draft/busy handling and persisted note/overnight end-date display;
+  Manila clock/date/elapsed helpers; independent
+  open-session query; Instructor Active Now across dates with unknown/error state.
+  Removed client audit INSERT and fake import/backup events; disabled those two
+  simulated actions and labeled backup unavailable/legacy audit provenance.
+- `inspection/03_phase2_attendance.sql`, repair proposal, RUNBOOK, migration/test
+  guides and D24-D27 cover anomaly review, staged validation and live limitations.
+- Dev-only pinned embedded-postgres 17.10.0-beta.17 + pg 8.23.1; native disposable
+  cluster accepts no remote URL/env credentials, runs hidden on random loopback
+  port, creates no OS user/service, verifies cleanup paths. No bootstrap read.
+
+| Check | Phase 2 result |
+|---|---|
+| `npm test` | 6 files / 2,012 tests passed: M01 SQL matrix 1,929; native Phase 2 SQL 45; migration gates 7; client transport 16; date/elapsed helpers 5; remaining baseline characterizations 10. Includes persisted deleted-master labels and final bulk scope/order checks. |
+| Native races/faults | Overlap observed through pg_stat_activity waits; approve/approve, reject/reject, approve/reject, clock-in/out, Pending-submission races have one transition. Reassignment/deactivation while waiting denies stale review. Insert/update/review/audit failure rollback and mixed bulk tested. |
+| `npm run build` | Passed: 675 modules; JS 933.62 kB / gzip 261.38 kB; CSS 22.88 kB / gzip 5.38 kB. Large-chunk warning remains Phase 6. |
+| `npm run lint` | Passed: zero errors, six existing unused-import warnings. |
+| `npm ls --depth=0` | Passed; test dependencies and existing React/Vite/plugins resolve without invalid top-level peers on Node 24.18.0. Runtime floor/tooling alignment remains Phase 3. |
+| `npm audit --ignore-scripts` | Exit 1: same 3 vulnerable packages (2 high, 1 moderate), deferred Phase 3. No forced audit fix; test dependencies introduce no advisory in this report. |
+| Safety / live limits | No .env read/output, real credentials, remote DB/Auth/Storage call or bootstrap execution. Local synthetic Auth/Storage metadata is not a deployed service. No browser/mobile/screen-reader run. |
+
+Pending: operator catalog/anomaly review, all real migration application and
+historical validation, genuine JWT/retained-session/API result shapes, Storage
+public delivery denial/actual size-MIME enforcement, authorized signed URLs,
+Supabase API races and browser/a11y. Private View/Download/version cleanup remains
+Phase 4. Read failures/pagination/lifecycle/other zero-row handlers remain later
+phases. New audit cannot certify previously authorized staff or historical claims.
+No production-readiness or deployed-security claim.
+
 ## Finding register
 
 M01 refers to `supabase/migrations/M01_authority.sql`; SQL suite refers to
@@ -103,7 +152,7 @@ M01 refers to `supabase/migrations/M01_authority.sql`; SQL suite refers to
 “Pending RT” means live verification, never a passing live test. Baseline probes
 remain in `tests/audit-baseline.test.js`; local SQL checks are separate evidence.
 
-| ID | Status | Phase 0 files / evidence | Tests / next phase and remaining risk |
+| ID | Status | Files / evidence | Tests / next phase and remaining risk |
 |---|---|---|---|
 | INS-001 | Fixed-pending-live-verification | M01; SQL suite; D08/D23 | Local protected-field/status/role tests pass; self-name only, trusted operator bootstrap documented. Pending live RT-01/02/03 and owner/membership inspection. |
 | INS-002 | Fixed-pending-live-verification | M01; LoginPage.jsx; SQL suite | Signup always intern/Pending + extension; requested_role non-authoritative. Local metadata cases pass; pending real Auth confirmation-on/off/metadata RT-01. |
@@ -111,23 +160,23 @@ remain in `tests/audit-baseline.test.js`; local SQL checks are separate evidence
 | INS-004 | Fixed-pending-live-verification | M01; SQL suite; D09/D20 | Assigned scope, ownership immutability/RPC-only review and foreign-folder checks pass locally. Pending live RT-03/04, actual extra policy/RPC inventory. |
 | INS-005 | Fixed-pending-live-verification | M01; InternDashboard.jsx; SQL suite | Own/assigned profile reads; related staff id/name RPC; equivalent roster SQL join passes. Pending actual PostgREST embeds/RPC shapes RT-03. |
 | INS-006 | Fixed-pending-live-verification | M01; InstructorDashboard.jsx; SQL suite; D07/D22 | Bound author, UUID active assigned recipient, frozen broadcast audience, author/recipient/Admin reads pass locally. Intern feed still INS-024; live RT-16 pending. |
-| INS-007 | Fixed-pending-live-verification | M01; authority.js; Intern/Instructor dashboards; SQL suite | Raw writes denied across roles; server clock/correction/review identity/time/field tests pass. Legacy constraints/audit/multi-client races remain Phase 2. Live RT-03/08/10 pending. |
+| INS-007 | Fixed-pending-live-verification | M01/M02/M03; authority.js; dashboards; SQL suites | Raw writes denied; trusted server clock/correction/review, audit and independent native races pass. Legacy validation/data review and live RT-03/08/10 pending. |
 | INS-008 | Fixed-pending-live-verification | M01; authority.js; dashboards; SQL suite | Admin-only empty Pending requirements, owner upload/reset RPC, own prefix/object check, staff review RPC. Local tampering tests pass; live RT-04/07/15 and full version lifecycle pending. |
-| INS-009 | Not-fixed | M01 narrows raw audit INSERT to Active Admin/own actor; D15 | Pending RT-12/20; Phase 2; client event/time forgery and missing trusted audit remain. |
-| INS-010 | Not-fixed | M01 atomic review prerequisite; Instructor RPC adapter; SQL suite | Local review/transition/interval checks pass; Phase 2 trusted audit, injected failures, multi-client races and server bulk still pending RT-11/12/13. |
-| INS-011 | Not-fixed | M01 guarded clock RPC; baseline SDK probe; D01 | Local repeated transition guards pass; Phase 2 legacy duplicate disposition, unique constraints and independent concurrency RT-08/12/13 pending. |
-| INS-012 | Not-fixed | M01 server instants; authority.js; Intern display test; D02/D03 | Owner date/elapsed logic corrected locally; Instructor Active Now/UTC date still Phase 2. Legacy ambiguous times unchanged; live RT-09/17 pending. |
+| INS-009 | Fixed-pending-live-verification | M02; AdminDashboard; phase2-postgres.test.js; D15/D25 | API audit writes denied including Admin; actor/time/changed fields and 11-table mandatory audit; zero-row/no-op absent; audit failure rolls back. Legacy provenance unverified. Live RT-12/20 and catalog pending. |
+| INS-010 | Fixed-pending-live-verification | M02; authority.js; InstructorDashboard; native/transport suites; D26 | Existing/missing-day reconciliation, note, failed insert/update/exception/audit rollback, mixed bulk and observed concurrent approve/reject races pass. Live SDK shapes/JWT/API races RT-11/12/13 pending. |
+| INS-011 | Fixed-pending-live-verification | M03/M05; migration gates/native SQL; D01/D24 | Daily/open/Pending unique identities, guarded ID-only clock closure and busy states; real concurrent transitions commit once. Legacy duplicates stop migration unchanged; real preflight/deployment/live RT-08/12/13 pending. |
+| INS-012 | Fixed-pending-live-verification | M01/M03; attendance.js; dashboards; helper/native SQL; D02/D03/D27 | Trusted instants/server Manila date, independent open query, overnight/seconds elapsed, Instructor Active Now across dates, explicit unknown legacy state. Device timezone display tested locally; legacy evidence/browser/live RT-09/17 pending. |
 | INS-013 | Not-fixed | RUNBOOK.md; inspection/README.md | Pending RT-22; Phase 3; old bootstrap/README unsafe wording unchanged, runbook forbids existing-data use. |
 | INS-014 | Not-fixed | package tooling; audit baseline recorded above | Pending RT-22; Phase 3; 3 existing vulnerable packages/dev host remain. |
-| INS-015 | Not-fixed | inspection/01_metadata.sql; D11 | Pending RT-04/15; Phase 2; deployed bucket privacy unknown, existing-public repair absent. |
-| INS-016 | Not-fixed | M01 DB interval/correction RPC; SQL suite; D03/D17 | Client clamp removed; overnight/date/duration/reason validation tested locally. Phase 2 NOT VALID/CHECK/uniqueness and live RT-09/10/12 pending. |
+| INS-015 | Fixed-pending-live-verification | M04; native SQL/migration gates; D11 | Existing public bucket explicitly private with MIME/10 MiB settings; unrelated bucket retained; missing bucket aborts. Actual object delivery/upload enforcement/live RT-04/15 unverified. |
+| INS-016 | Fixed-pending-live-verification | M03/M05; inspection/03; native SQL/migration gates; D03/D17/D24 | Independent new-row interval/hours/review/reason CHECKs, future-write guards, Pending uniqueness. Equal/negative/ambiguous/excessive/future invalid; explicit overnight/max16h/one-second valid. Historical validation and live RT-09/10/12 pending. |
 | INS-017 | Not-fixed | inspection/02_anomalies.sql; FIXTURES.md; D12 | Pending RT-14; Phase 4; malformed/null/inconsistent scores still accepted. |
 | INS-018 | Not-fixed | 5 baseline numeric cases; inspection/02_anomalies.sql; D06 | Coercion reproduced; pending RT-05/17; Phase 4; no validator/CHECK yet. |
 | INS-019 | Not-fixed | inspection/02_anomalies.sql; D09 | Pending RT-05; Phase 4; lifecycle/assignment partial commits unchanged. |
 | INS-020 | Not-fixed | inspection/02_anomalies.sql; D10 | Pending RT-07; Phase 4; duplicates/partial provisioning unchanged. |
 | INS-021 | Not-fixed | FIXTURES.md; D11 | Pending RT-04/15; Phase 4; no private View/Download UI yet. |
 | INS-022 | Not-fixed | inspection/02_anomalies.sql; D10/D11 | Pending RT-15; Phase 4; upload/version/cleanup races unchanged. |
-| INS-023 | Not-fixed | FIXTURES.md; D05/D15 | Pending RT-20; Phase 3; simulated operations still claim success. |
+| INS-023 | Not-fixed | Admin fake backup/import disabled; fake client events removed; D05/D15 | Partial Phase 2 improvement. Phase 3 must disable remaining fake templates/exports/reports/drag-drop/uptime and implement commissioned real artifacts. RT-20 pending. |
 | INS-024 | Not-fixed | Instructor UUID targeting implemented with M01; D07 | Pending RT-16; Phase 4; Intern loading/empty/error message feed still absent. |
 | INS-025 | Not-fixed | baseline chart probe; D02/D04/D05/D13 | Cross-year averaging reproduced; pending RT-17/18; Phase 4; shared metrics not extracted yet. |
 | INS-026 | Not-fixed | FIXTURES.md | Pending RT-18/19; Phase 5; failed reads still resemble empty data. |

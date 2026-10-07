@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { recordRpc, reviewCorrections } from "../lib/authority";
+import { formatBusinessDate, isOpenSession } from "../lib/attendance";
 import Shell from "./Shell";
 import { useToast } from "./Toast";
 import {
@@ -27,7 +28,6 @@ const rubricCriteria = [
 ];
 const scaleLabels = { 1: "Poor", 2: "Fair", 3: "Satisfactory", 4: "Good", 5: "Excellent" };
 
-const todayStr = () => new Date().toISOString().slice(0, 10);
 const inputStyle = { borderColor: "var(--border)", background: "var(--card)", color: "var(--foreground)" };
 const inputCls = "w-full text-sm py-2 px-3 rounded-lg border outline-none";
 
@@ -87,6 +87,7 @@ export default function InstructorDashboard({ profile, onLogout }) {
 
   // DTR review
   const [selectedEx, setSelectedEx] = useState([]);
+  const [reviewNote, setReviewNote] = useState("");
 
   // Documents
   const [selectedDocInternId, setSelectedDocInternId] = useState("");
@@ -104,11 +105,10 @@ export default function InstructorDashboard({ profile, onLogout }) {
       .eq("instructor_id", profile.id);
 
     const internIds = (internRows ?? []).map((r) => r.id);
-    const today = todayStr();
 
     const [
       { data: attendanceRows },
-      { data: todayRows },
+      { data: openRows, error: openError },
       { data: evalRows },
       { data: exceptionRows },
       { data: docRows },
@@ -116,7 +116,7 @@ export default function InstructorDashboard({ profile, onLogout }) {
       { data: annRows },
     ] = await Promise.all([
       internIds.length ? supabase.from("attendance_logs").select("intern_id, hours").in("intern_id", internIds) : Promise.resolve({ data: [] }),
-      internIds.length ? supabase.from("attendance_logs").select("intern_id, time_in, time_out").in("intern_id", internIds).eq("log_date", today) : Promise.resolve({ data: [] }),
+      internIds.length ? supabase.from("attendance_logs").select("intern_id, time_in, time_out, clocked_in_at, clocked_out_at").in("intern_id", internIds).is("time_out", null) : Promise.resolve({ data: [] }),
       internIds.length ? supabase.from("evaluations").select("*").in("intern_id", internIds).order("created_at", { ascending: false }) : Promise.resolve({ data: [] }),
       internIds.length ? supabase.from("attendance_exceptions").select("*").in("intern_id", internIds).order("created_at", { ascending: false }) : Promise.resolve({ data: [] }),
       internIds.length ? supabase.from("documents").select("*").in("intern_id", internIds).order("name") : Promise.resolve({ data: [] }),
@@ -128,7 +128,9 @@ export default function InstructorDashboard({ profile, onLogout }) {
     (attendanceRows ?? []).forEach((a) => {
       if (a.hours) hoursByIntern[a.intern_id] = (hoursByIntern[a.intern_id] ?? 0) + Number(a.hours);
     });
-    const clockedInSet = new Set((todayRows ?? []).filter((t) => t.time_in && !t.time_out).map((t) => t.intern_id));
+    if (openError) toast(`Unable to load open sessions: ${openError.message}`, "error");
+    const clockedInSet = new Set((openRows ?? []).filter(isOpenSession).map((t) => t.intern_id));
+    const unknownSessionSet = new Set((openRows ?? []).filter((row) => !isOpenSession(row)).map((t) => t.intern_id));
     const latestScoreByIntern = {};
     (evalRows ?? []).forEach((e) => {
       if (!(e.intern_id in latestScoreByIntern)) latestScoreByIntern[e.intern_id] = e.overall_score;
@@ -146,7 +148,7 @@ export default function InstructorDashboard({ profile, onLogout }) {
         required: r.required_hours,
         midterm: latestScoreByIntern[r.id] ?? null,
         status: r.status,
-        clockedIn: clockedInSet.has(r.id),
+        clockedIn: openError || unknownSessionSet.has(r.id) ? null : clockedInSet.has(r.id),
         cleared: hours >= r.required_hours,
       };
     });
@@ -174,7 +176,7 @@ export default function InstructorDashboard({ profile, onLogout }) {
   }, 0);
   const rubricComplete = rubricCriteria.every((c) => rubricScores[c.id] > 0);
 
-  const activeNow = roster.filter((r) => r.clockedIn).length;
+  const activeNow = roster.some((r) => r.clockedIn === null) ? "Unavailable" : roster.filter((r) => r.clockedIn).length;
   const atRisk = roster.filter((r) => r.status === "At Risk").length;
   const cleared = roster.filter((r) => r.cleared).length;
   const pendingEx = exceptions.filter((e) => e.status === "Pending").length;
@@ -243,9 +245,14 @@ export default function InstructorDashboard({ profile, onLogout }) {
   // would never show up in the intern's DTR or Weekly Hours Log graph.
   const runReview = async (ids, decision) => {
     if (reviewBusy || !ids.length) return;
+    if (reviewNote.length > 500 || (decision === "Rejected" && !reviewNote.trim())) {
+      toast("Enter a rejection note (at most 500 characters)", "error");
+      return;
+    }
+    if (ids.length > 100) { toast("Select at most 100 corrections per review", "error"); return; }
     setReviewBusy(true);
     try {
-      const outcomes = await reviewCorrections(supabase, ids, decision);
+      const outcomes = await reviewCorrections(supabase, ids, decision, reviewNote.trim() || null);
       const committed = outcomes.filter((r) => r.ok);
       const failed = outcomes.filter((r) => !r.ok);
       const rows = Object.fromEntries(committed.map((r) => [r.id, r.data]));
@@ -253,6 +260,7 @@ export default function InstructorDashboard({ profile, onLogout }) {
       setSelectedEx((prev) => prev.filter((id) => !rows[id]));
       if (committed.length) toast(committed.length + ' correction(s) ' + decision.toLowerCase(), 'success');
       if (failed.length) toast(failed.length + ' failed: ' + failed[0].error, 'error');
+      if (!failed.length) setReviewNote("");
       if (committed.length) await loadAll();
     } finally { setReviewBusy(false); }
   };
@@ -328,7 +336,7 @@ export default function InstructorDashboard({ profile, onLogout }) {
             </p>
           </div>
           <span className="text-xs px-2.5 py-1 rounded-lg" style={{ background: "var(--secondary)", color: "var(--muted-foreground)" }}>
-            {new Date().toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}
+            {new Date().toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric", timeZone: "Asia/Manila" })}
           </span>
         </div>
 
@@ -530,7 +538,7 @@ export default function InstructorDashboard({ profile, onLogout }) {
                         <div>
                           <div className="text-sm font-semibold">{ev.internName}</div>
                           <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>
-                            Submitted: {new Date(ev.created_at).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}
+                            Submitted: {new Date(ev.created_at).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" , timeZone: "Asia/Manila" })}
                           </div>
                         </div>
                         <div className="text-right">
@@ -574,6 +582,12 @@ export default function InstructorDashboard({ profile, onLogout }) {
                   <button onClick={selectAllPending} className="text-xs" style={{ color: "var(--primary)" }}>Select all pending</button>
                 )}
               </div>
+              <div className="px-4 py-3">
+                <label htmlFor="correction-review-note" className="block text-xs mb-1">Review note (required to reject; applies to selected requests)</label>
+                <textarea id="correction-review-note" value={reviewNote} maxLength={500} disabled={reviewBusy}
+                  onChange={(e) => setReviewNote(e.target.value)} className={inputCls} style={inputStyle} rows={2} />
+                <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>{reviewNote.length}/500 characters. Failed reviews keep this draft.</p>
+              </div>
               <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -592,9 +606,11 @@ export default function InstructorDashboard({ profile, onLogout }) {
                           onChange={() => toggleSelectEx(ex.id)} className="w-3.5 h-3.5 rounded" />
                       </td>
                       <td className="px-4 py-3 text-xs font-medium">{ex.internName}</td>
-                      <td className="px-4 py-3 text-xs">{new Date(ex.log_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</td>
+                      <td className="px-4 py-3 text-xs">{formatBusinessDate(ex.log_date, { month: "short", day: "numeric" })}</td>
                       <td className="px-4 py-3 text-xs font-mono">{ex.claimed_time_in}</td>
-                      <td className="px-4 py-3 text-xs font-mono">{ex.claimed_time_out}</td>
+                      <td className="px-4 py-3 text-xs font-mono">{ex.claimed_time_out}
+                        {ex.claimed_end_date && ex.claimed_end_date !== ex.log_date && <div>Ends {formatBusinessDate(ex.claimed_end_date)}</div>}
+                      </td>
                       <td className="px-4 py-3 text-xs max-w-xs" style={{ color: "var(--muted-foreground)" }}>{ex.reason}</td>
                       <td className="px-4 py-3">
                         <span className="text-xs px-2 py-0.5 rounded-full"
@@ -603,6 +619,7 @@ export default function InstructorDashboard({ profile, onLogout }) {
                             : { background: "var(--warning-bg)", color: "var(--warning)" }}>
                           {ex.status}
                         </span>
+                        {ex.review_note && <div className="text-xs mt-1 break-words">{ex.review_note}</div>}
                       </td>
                       <td className="px-4 py-3">
                         {ex.status === "Pending" && (
@@ -629,7 +646,7 @@ export default function InstructorDashboard({ profile, onLogout }) {
                   <div key={ex.id} className="flex items-center gap-3 text-xs">
                     <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: ex.status === "Approved" ? "var(--success)" : "var(--danger)" }} />
                     <span style={{ color: "var(--muted-foreground)" }}>
-                      <strong style={{ color: "var(--foreground)" }}>{ex.internName}</strong> — {new Date(ex.log_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })} exception {ex.status.toLowerCase()}
+                      <strong style={{ color: "var(--foreground)" }}>{ex.internName}</strong> — {formatBusinessDate(ex.log_date, { month: "short", day: "numeric" })} exception {ex.status.toLowerCase()}
                     </span>
                   </div>
                 ))}
@@ -842,7 +859,7 @@ export default function InstructorDashboard({ profile, onLogout }) {
                         <div className="text-sm font-semibold">{a.title}</div>
                         <div className="text-xs mt-0.5 flex items-center gap-2" style={{ color: "var(--muted-foreground)" }}>
                           <span className="flex items-center gap-1"><IconUser size={10} /> {a.target}</span>
-                          <span>· {new Date(a.created_at).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}</span>
+                          <span>· {new Date(a.created_at).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" , timeZone: "Asia/Manila" })}</span>
                         </div>
                       </div>
                     </div>

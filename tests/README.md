@@ -1,4 +1,4 @@
-# Local baseline tests
+# Local remediation tests
 
 Run `npm test` (one run), `npm run test:watch` (local watcher) and `npm run lint`.
 Node 24.18.0 was used in Phase 0; runtime alignment is tracked under INS-037.
@@ -29,10 +29,26 @@ asserting the desired result; do not preserve buggy behavior just to keep it gre
 grants, triggers and controlled operations against synthetic Auth/Storage tables.
 The matrix alone has 1,716 cases; protected-field, RPC and catalog cases supplement
 it. `authority-client.test.js` checks returned-record cardinality, target identity,
-transport failures and committed bulk outcomes. No network needed or permitted.
+transport failures and committed bulk outcomes. Remote application HTTP is denied.
 
 Fixture and live test contracts: `../supabase/tests/FIXTURES.md` and `M01.md`.
 Local Postgres policy tests are implemented/executed. Supabase services/HTTP, signed
-URL delivery, JWT validation, two-connection races, browser and accessibility remain
+URL delivery, JWT validation, Supabase two-client races, browser and accessibility remain
 unverified. Build is compilation evidence only; local policy tests do not establish
 that deployed grants, functions or bucket privacy match this repository.
+
+Phase 2 adds `attendance.test.js` (Manila dates/clock formatting/elapsed helpers),
+`phase2-migration-gates.test.js` (fresh PGlite legacy-preservation/validation gates)
+and `phase2-postgres.test.js` (actual native Postgres 17.10, synthetic fixture,
+M01-M05, audit/interval/clock/bulk/fault/race cases). Native races deliberately
+observe both separate connections waiting before releasing an advisory lock.
+Concurrent status/assignment changes are rechecked after lock acquisition.
+
+`disposable-postgres.js` accepts no external connection URL or environment
+credentials. It starts its own loopback-only process at a random port, under an
+ordinary OS user, never creates an OS account/service, uses an ephemeral synthetic
+password and removes only the checked `.test-postgres/synthetic-*` directory after
+closing clients/stopping the server. Platform optional binaries/scripts must be
+installed; do not disable a failing native suite or count it as passed. No existing
+database/bootstrap is used. Local loopback TCP is the only DB network transport.
+See `../supabase/tests/PHASE2.md` for exact coverage and pending live checks.
