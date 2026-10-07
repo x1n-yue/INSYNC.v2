@@ -1,9 +1,9 @@
 # Remediation decisions
 
-Phase 0, 2026-10-07. These are conservative **assumed defaults**, not confirmed
+Phases 0-1, 2026-10-07. These are conservative **assumed defaults**, not confirmed
 institutional policy. Ambiguous behavior is paused at this decision record before
-implementation; work continues using these defaults as requested. No application
-rule changes in Phase 0. Update the relevant decision, shared module, migration,
+implementation; work continues using these defaults as requested. Phase 1 implements
+the authority subset and its controlled-operation prerequisites. Update the relevant decision, shared module, migration,
 inspection thresholds and tests together before changing a default. Never apply a
 new rule retroactively by silently rewriting legacy data.
 
@@ -27,6 +27,11 @@ new rule retroactively by silently rewriting legacy data.
 | D16 | In-use company/section deletion requires displayed impact and deliberate confirmation; optional explicit reassignment, no silent choice. Preserve history; rollback of policy changes must not reopen broad access. | Review existing SET NULL behavior in Phase 6; refreshed dependent forms required after success (INS-029). |
 | D17 | Accomplishment <=500 characters; trimmed correction reason and revision/rejection note required, with a 500-character limit for notes/reasons. | No silent truncation. Client/server validation; failed save retains draft (INS-016/032). |
 | D18 | No real-project SQL execution in this session. All migrations/runbook are deliverables only; legacy repairs require separate per-group review. | Phase 0 provides inspection and repair proposal, not data changes. All Supabase fixtures disposable; no Auth/Storage network tests yet. |
+| D19 | Non-Active own-profile access is a status-only `my_profile()` JSON response (id/status); direct profile reads denied. Related staff exposure is only id/full_name through scoped name RPC. | Active instructors read assigned intern profiles for existing roster needs, Active Admin reads all. Existing Intern staff-profile FK embeds replaced by restricted name mapping (INS-003/005). |
+| D20 | Storage evidence is immutable after INSERT; only active intern owns upload path. Assigned staff read only objects referenced by assigned documents whose path prefix matches intern_id. No documents object UPDATE/DELETE until scoped cleanup is designed. | Existing public-bucket hardening stays Phase 2. Legacy foreign-folder metadata cannot authorize cross-roster reads (INS-004/008). |
+| D21 | Add trusted clock instants, explicit correction end date, atomic correction review and path-pinned document review in M01 so raw write revocation preserves legitimate flows. | These are Phase 1 authority prerequisites, pulled forward from later phases. Phase 2 still owns trusted audit, review notes/server bulk, reviewed uniqueness/CHECKs, private bucket limits and multi-client concurrency verification. No ambiguous legacy timestamp backfill. |
+| D22 | Legacy announcements with unknown recipient snapshot remain readable only to original author/Active Admin; no recipients inferred from current assignment. New broadcast snapshot freezes active assigned intern UUIDs at send time. | Reassignment changes staff data access, never old-message recipient privacy. Public signup requests only intern; staff requests go through administrator, not a privileged signup option (INS-002/006). |
+| D23 | Existing Admin profile management stays direct RLS+field guard; profile creation belongs to Auth signup, profile deletion unsupported. Self-name edits require Active status. Trusted postgres operator is the sole first-Admin bootstrap exception. | Documented operator procedure uses exact Auth-verified UUID and asserts one returned row; no client-supplied role claim/GUC grants authority. Atomic lifecycle operation remains Phase 4 (INS-001/019). |
 
 Tooling choice: standalone Node Vitest configuration keeps application build,
 runtime, dev host and source behavior unchanged. Use patched Vitest 4.1.11 instead
@@ -38,3 +43,9 @@ major unsupported. Reassess compatible lint plugins/runtime in Phase 3. Current
 validation runtime is Node 24.18.0/npm 11.16.0; declared Node floor remains an open
 INS-037 issue until Phase 3. Test-tool dependency engines may require a higher
 minor floor than >=22; use actual lockfile engines for that phase's alignment.
+
+Phase 1 adds PGlite 0.5.8 as a dev-only in-memory Postgres test engine. Migration
+SQL is applied exclusively to freshly constructed synthetic Auth/Storage/domain
+fixtures. No remote DB/Auth/Storage service is contacted and bootstrap is never
+read/executed by the harness. These tests verify SQL locally, not deployed policy
+metadata, PostgREST behavior, signed URLs or cryptographic JWT validation.

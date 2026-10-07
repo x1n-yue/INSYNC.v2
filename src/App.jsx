@@ -31,10 +31,7 @@ export default function App() {
     if (!session) return;
     setLoading(true);
     supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", session.user.id)
-      .single()
+      .rpc("my_profile")
       .then(({ data, error }) => {
         if (error) console.error("Failed to load profile:", error.message);
         setProfile(data ?? null);
@@ -74,7 +71,7 @@ export default function App() {
         </h1>
         <p style={{ color: "var(--muted-foreground)" }}>
           Your account is <strong>{profile.status}</strong>. An administrator needs to
-          activate it before you can sign in.
+          activate it before you can access internship records.
         </p>
         <button
           onClick={handleLogout}

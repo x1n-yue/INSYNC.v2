@@ -20,8 +20,6 @@ const demoAccounts = [
 
 const roleOptions = [
   { value: "intern", label: "Intern / Student", desc: "Track hours & evaluations" },
-  { value: "instructor", label: "Academic Instructor", desc: "Monitor class progress" },
-  { value: "admin", label: "System Administrator", desc: "Manage platform, users & settings" },
 ];
 
 function InputField({ label, type, value, onChange, placeholder, icon, rightEl }) {
@@ -113,7 +111,7 @@ export default function LoginPage() {
       options: {
         data: {
           full_name: regName,
-          role: regRole,
+          requested_role: regRole,
           organization: regOrg,
           student_id: regRole === "intern" ? regId : null,
         },
@@ -267,7 +265,7 @@ export default function LoginPage() {
             {/* Role selector */}
             <div>
               <label className="block text-sm font-medium mb-1.5" style={{ color: "var(--foreground)" }}>
-                Role
+                Account request
               </label>
               <div className="grid grid-cols-1 gap-2">
                 {roleOptions.map((r) => (
@@ -392,11 +390,11 @@ export default function LoginPage() {
               Welcome, <span className="font-medium" style={{ color: "var(--foreground)" }}>{regName}</span>!
             </p>
             <p className="text-sm mb-6" style={{ color: "var(--muted-foreground)" }}>
-              Your account has been created as{" "}
+              Your account request is for{" "}
               <span className="font-medium" style={{ color: "var(--primary)" }}>
                 {roleOptions.find((r) => r.value === regRole)?.label}
               </span>
-              . An administrator will activate it shortly.
+              . An administrator must approve effective role and access. Contact your administrator for a staff-role request.
             </p>
             <button
               onClick={() => {

@@ -3,6 +3,12 @@
 -- Candidate thresholds come from DECISIONS.md; these do NOT repair records.
 begin transaction read only;
 
+-- INS-001/002: role/status cannot establish whether legacy privilege was approved.
+-- Operator must review provenance; do not automatically demote or trust metadata.
+select id as profile_id,role,status,created_at from public.profiles
+where role in ('admin','instructor') order by role,status,id;
+select role,status,count(*) as profile_count from public.profiles group by role,status;
+
 -- INS-011: duplicates must block daily uniqueness until individually reviewed.
 select intern_id, log_date, count(*) as row_count, array_agg(id order by id) as row_ids
 from public.attendance_logs group by intern_id, log_date having count(*) > 1;

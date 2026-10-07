@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
+import { manilaDate } from "../src/lib/authority";
 
 const source = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
 const admin = source("src/components/AdminDashboard.jsx");
-const instructor = source("src/components/InstructorDashboard.jsx");
 const intern = source("src/components/InternDashboard.jsx");
 
 function between(text, start, end) {
@@ -14,35 +14,27 @@ function between(text, start, end) {
   return text.slice(from, to);
 }
 
-// These deliberately assert the audited defects to preserve the Phase 0 baseline.
-// Replace each with desired-behavior tests when its finding is implemented.
+// Remaining characterization cases assert audited defects. The owner date check
+// now asserts corrected behavior; server interval tests live in the SQL suite.
+// Replace other probes with desired-behavior tests when their findings are fixed.
 // No extracted handler may access a real client, credentials, or records.
 describe("audit baseline characterization (known defects, not remediation)", () => {
-  it("INS-012: UTC business-date key backdates early Manila clock-in by 24 hours", () => {
+  it("INS-012: owner clock display uses the Manila date at early morning boundaries", () => {
     const clock = new Date("2026-10-07T00:30:00+08:00");
-    const declaration = intern.match(/const todayStr = [^;]+;/)?.[0];
-    expect(declaration).toBeTruthy();
     vi.useFakeTimers();
     try {
       vi.setSystemTime(clock);
-      const today = new Function(`${declaration}; return todayStr;`)();
-      expect(today()).toBe("2026-10-06");
-      // Explicit offset makes this independent of the test machine's timezone.
-      const reconstructed = new Date(`${today()}T00:30:00+08:00`);
-      expect((clock - reconstructed) / 3600000).toBe(24);
+      expect(manilaDate()).toBe("2026-10-07");
+      expect(manilaDate(new Date("2026-10-07T00:00:00+08:00"))).toBe("2026-10-07");
+      expect(manilaDate(new Date("2026-10-07T07:59:00+08:00"))).toBe("2026-10-07");
+      expect(manilaDate(new Date("2026-10-07T08:00:00+08:00"))).toBe("2026-10-07");
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it("INS-016: computeHours clamps overnight claims and discards seconds", () => {
-    const declaration = between(instructor, "  const computeHours =", "  const applyExceptionToAttendance =");
-    const compute = new Function(`${declaration}; return computeHours;`)();
-    expect(compute("08:00", "17:00")).toBe(9);
-    expect(compute("22:00", "06:00")).toBe(0);
-    expect(compute("08:00:59", "08:01:00")).toBe(0);
-    expect(compute(null, "17:00")).toBeNull();
-  });
+  // INS-016's extracted computeHours probe is replaced by actual Postgres
+  // correction_instants/review tests in m01-authority.test.js. No client clamp.
 
   it.each([["0", 486], ["", 486], ["abc", 486], ["-1", -1], ["1.5", 1.5]])(
     "INS-018: required_hours %j is coerced to %s", (value, saved) => {

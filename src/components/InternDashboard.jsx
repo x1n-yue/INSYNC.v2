@@ -9,6 +9,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { supabase } from "../lib/supabaseClient";
+import { manilaDate, recordRpc } from "../lib/authority";
 import Shell from "./Shell";
 import Modal from "./Modal";
 import { useToast } from "./Toast";
@@ -71,7 +72,7 @@ function DocStatusBadge({ status }) {
   );
 }
 
-const todayStr = () => new Date().toISOString().slice(0, 10);
+const todayStr = () => manilaDate();
 const inputCls = "w-full text-sm py-2 px-3 rounded-lg border outline-none";
 const inputStyle = { borderColor: "var(--border)", background: "var(--card)", color: "var(--foreground)" };
 
@@ -79,6 +80,8 @@ export default function InternDashboard({ profile, onLogout }) {
   const { toast } = useToast();
   const [tab, setTab] = useState("dashboard");
   const [loading, setLoading] = useState(true);
+  const [clockBusy, setClockBusy] = useState(false);
+  const [correctionBusy, setCorrectionBusy] = useState(false);
   const [internInfo, setInternInfo] = useState(null); // { required_hours, companies:{name}, profiles:{full_name} }
   const [dtr, setDtr] = useState([]); // attendance_logs, newest first
   const [evaluationList, setEvaluationList] = useState([]);
@@ -96,7 +99,7 @@ export default function InternDashboard({ profile, onLogout }) {
   const [accomplishment, setAccomplishment] = useState("");
 
   // Exception form
-  const [exForm, setExForm] = useState({ date: "", claimedIn: "", claimedOut: "", reason: "" });
+  const [exForm, setExForm] = useState({ date: "", endDate: "", claimedIn: "", claimedOut: "", reason: "" });
 
   // Document upload
   const fileInputRefs = useRef({});
@@ -107,21 +110,29 @@ export default function InternDashboard({ profile, onLogout }) {
       await Promise.all([
         supabase
           .from("interns")
-          .select("required_hours, companies(name), profiles!interns_instructor_id_fkey(full_name)")
+          .select("instructor_id, required_hours, companies(name)")
           .eq("id", profile.id)
           .maybeSingle(),
         supabase.from("attendance_logs").select("*").eq("intern_id", profile.id).order("log_date", { ascending: false }),
         supabase
           .from("evaluations")
-          .select("*, profiles!evaluations_evaluator_id_fkey(full_name)")
+          .select("*")
           .eq("intern_id", profile.id)
           .order("created_at", { ascending: false }),
         supabase.from("attendance_exceptions").select("*").eq("intern_id", profile.id).order("created_at", { ascending: false }),
         supabase.from("documents").select("*").eq("intern_id", profile.id).order("name"),
       ]);
-    setInternInfo(internRow);
+    const nameIds = [...new Set([internRow?.instructor_id, ...(evalRows ?? []).map((e) => e.evaluator_id)].filter(Boolean))];
+    const { data: nameRows, error: nameError } = await supabase.rpc("related_profile_names", { p_ids: nameIds });
+    if (nameError) {
+      toast(`Unable to load related names: ${nameError.message}`, "error");
+      setLoading(false);
+      return;
+    }
+    const names = Object.fromEntries((nameRows ?? []).map((p) => [p.id, { full_name: p.full_name }]));
+    setInternInfo(internRow ? { ...internRow, profiles: names[internRow.instructor_id] } : null);
     setDtr(attendanceRows ?? []);
-    setEvaluationList(evalRows ?? []);
+    setEvaluationList((evalRows ?? []).map((e) => ({ ...e, profiles: names[e.evaluator_id] })));
     setExceptions(exceptionRows ?? []);
     setDocs(docRows ?? []);
     setLoading(false);
@@ -132,8 +143,8 @@ export default function InternDashboard({ profile, onLogout }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile.id]);
 
-  const todayRow = dtr.find((d) => d.log_date === todayStr());
-  const clockInDate = todayRow?.time_in ? new Date(`${todayRow.log_date}T${todayRow.time_in}`) : null;
+  const todayRow = dtr.find((d) => d.time_in && !d.time_out) ?? dtr.find((d) => d.log_date === todayStr());
+  const clockInDate = todayRow?.clocked_in_at ? new Date(todayRow.clocked_in_at) : null;
   const isClockedIn = Boolean(todayRow && todayRow.time_in && !todayRow.time_out);
 
   // Live elapsed timer
@@ -154,44 +165,26 @@ export default function InternDashboard({ profile, onLogout }) {
   }, [isClockedIn, clockInDate?.getTime()]);
 
   const handleClockIn = async () => {
-    const now = new Date();
-    const timeStr = now.toTimeString().slice(0, 8);
-    const { data, error } = await supabase
-      .from("attendance_logs")
-      .insert({ intern_id: profile.id, log_date: todayStr(), time_in: timeStr })
-      .select()
-      .single();
-    if (error) return toast(error.message, "error");
-    setDtr((prev) => [data, ...prev]);
-    toast("Clocked in at " + formatTime(now), "success");
+    if (clockBusy) return;
+    setClockBusy(true);
+    try {
+      const result = await recordRpc(supabase, "clock_in");
+      if (!result.ok) return toast(result.error, "error");
+      setDtr((prev) => [result.data, ...prev]);
+      toast("Clocked in at " + result.data.time_in, "success");
+    } finally { setClockBusy(false); }
   };
 
   const handleClockOut = async (accomp) => {
-    if (!todayRow) return;
-    const now = new Date();
-    const timeStr = now.toTimeString().slice(0, 8);
-    const hoursWorked = clockInDate ? (now.getTime() - clockInDate.getTime()) / 3600000 : 0;
-    const hrs = Math.round(hoursWorked * 10) / 10;
-    // Match on intern_id + log_date (not just id) and use maybeSingle so a
-    // 0-row result (e.g. blocked by RLS) surfaces a clear message instead
-    // of the generic "cannot coerce" crash from .single().
-    const { data, error } = await supabase
-      .from("attendance_logs")
-      .update({ time_out: timeStr, hours: hrs, accomplishment: accomp })
-      .eq("intern_id", profile.id)
-      .eq("log_date", todayStr())
-      .select()
-      .maybeSingle();
-    if (error) return toast(error.message, "error");
-    if (!data) {
-      toast("Clock-out was blocked by the database (permissions). See console for details.", "error");
-      console.error(
-        "attendance_logs update matched 0 rows — check RLS policies on attendance_logs (see supabase/schema.sql)."
-      );
-      return;
-    }
-    setDtr((prev) => prev.map((d) => (d.id === data.id ? data : d)));
-    toast(`Clocked out — ${hrs} hrs logged`, "success");
+    if (!todayRow || clockBusy) return { ok: false };
+    setClockBusy(true);
+    try {
+      const result = await recordRpc(supabase, "clock_out", { p_id: todayRow.id, p_accomplishment: accomp });
+      if (!result.ok) { toast(result.error, "error"); return result; }
+      setDtr((prev) => prev.map((d) => d.id === result.data.id ? result.data : d));
+      toast(`Clocked out — ${Number(result.data.hours).toFixed(2)} hrs logged`, "success");
+      return result;
+    } finally { setClockBusy(false); }
   };
 
   const submitException = async () => {
@@ -199,35 +192,26 @@ export default function InternDashboard({ profile, onLogout }) {
       toast("Please complete all fields", "error");
       return;
     }
-    const { data, error } = await supabase
-      .from("attendance_exceptions")
-      .insert({
-        intern_id: profile.id,
-        log_date: exForm.date,
-        claimed_time_in: exForm.claimedIn,
-        claimed_time_out: exForm.claimedOut,
-        reason: exForm.reason.trim(),
-      })
-      .select()
-      .single();
-    if (error) return toast(error.message, "error");
-    setExceptions((prev) => [data, ...prev]);
-    setExForm({ date: "", claimedIn: "", claimedOut: "", reason: "" });
+    if (correctionBusy) return;
+    setCorrectionBusy(true);
+    const result = await recordRpc(supabase, "submit_correction", {
+      p_date: exForm.date, p_in: exForm.claimedIn, p_out: exForm.claimedOut,
+      p_end: exForm.endDate || exForm.date, p_reason: exForm.reason.trim(),
+    });
+    setCorrectionBusy(false);
+    if (!result.ok) return toast(result.error, "error");
+    setExceptions((prev) => [result.data, ...prev]);
+    setExForm({ date: "", endDate: "", claimedIn: "", claimedOut: "", reason: "" });
     toast("Exception request submitted — awaiting instructor review", "info");
   };
 
   const handleDocUpload = async (doc, file) => {
     const path = `${profile.id}/${doc.doc_type}-${Date.now()}-${file.name}`;
-    const { error: uploadError } = await supabase.storage.from("documents").upload(path, file, { upsert: true });
+    const { error: uploadError } = await supabase.storage.from("documents").upload(path, file, { upsert: false });
     if (uploadError) return toast(uploadError.message, "error");
-    const { data, error } = await supabase
-      .from("documents")
-      .update({ file_path: path, file_name: file.name, status: "Pending", note: null, updated_at: new Date().toISOString() })
-      .eq("id", doc.id)
-      .select()
-      .single();
-    if (error) return toast(error.message, "error");
-    setDocs((prev) => prev.map((d) => (d.id === doc.id ? data : d)));
+    const result = await recordRpc(supabase, "submit_document_upload", { p_id: doc.id, p_path: path, p_name: file.name });
+    if (!result.ok) return toast(result.error, "error");
+    setDocs((prev) => prev.map((d) => d.id === doc.id ? result.data : d));
     toast(`${file.name} uploaded — pending instructor review`, "info");
   };
 
@@ -408,11 +392,12 @@ export default function InternDashboard({ profile, onLogout }) {
               </div>
               <button
                 onClick={() => (isClockedIn ? setShowAccomplModal(true) : handleClockIn())}
+                disabled={clockBusy || Boolean(todayRow?.time_out)}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all shrink-0"
                 style={{ background: isClockedIn ? "var(--danger-bg)" : "var(--primary)", color: isClockedIn ? "var(--danger)" : "#fff" }}
               >
                 <IconClock size={14} />
-                {isClockedIn ? "Clock Out" : "Clock In"}
+                {clockBusy ? "Saving…" : isClockedIn ? "Clock Out" : todayRow?.time_out ? "Day Completed" : "Clock In"}
               </button>
             </div>
 
@@ -531,6 +516,11 @@ export default function InternDashboard({ profile, onLogout }) {
                         className={inputCls} style={inputStyle} />
                     </div>
                   </div>
+                  <div>
+                    <label htmlFor="correction-end-date" className="block text-xs font-medium mb-1">Clock-out date (overnight only)</label>
+                    <input id="correction-end-date" type="date" value={exForm.endDate} onChange={(e) => setExForm((f) => ({ ...f, endDate: e.target.value }))}
+                      className={inputCls} style={inputStyle} />
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-medium mb-1" style={{ color: "var(--foreground)" }}>Reason / Explanation</label>
@@ -540,7 +530,7 @@ export default function InternDashboard({ profile, onLogout }) {
                     style={inputStyle} />
                 </div>
                 <div className="flex justify-end">
-                  <button onClick={submitException} className="text-sm px-4 py-2 rounded-lg font-semibold"
+                  <button onClick={submitException} disabled={correctionBusy} className="text-sm px-4 py-2 rounded-lg font-semibold"
                     style={{ background: "var(--primary)", color: "#fff" }}>
                     Submit Request
                   </button>
@@ -798,8 +788,8 @@ export default function InternDashboard({ profile, onLogout }) {
               <button onClick={() => setShowAccomplModal(false)} className="text-sm px-4 py-2 rounded-lg"
                 style={{ background: "var(--secondary)", color: "var(--foreground)" }}>Cancel</button>
               <button
-                disabled={!accomplishment.trim()}
-                onClick={() => { handleClockOut(accomplishment.trim()); setAccomplishment(""); setShowAccomplModal(false); }}
+                disabled={clockBusy || !accomplishment.trim() || accomplishment.length > 500}
+                onClick={async () => { const result = await handleClockOut(accomplishment.trim()); if (result?.ok) { setAccomplishment(""); setShowAccomplModal(false); } }}
                 className="text-sm px-4 py-2 rounded-lg font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{ background: "var(--danger)", color: "#fff" }}>
                 Clock Out &amp; Save Log

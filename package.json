@@ -21,6 +21,7 @@
     "recharts": "^3.10.1"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
     "@eslint/js": "9.39.5",
     "@tailwindcss/vite": "^4.0.0",
     "@vitejs/plugin-react": "^4.3.0",

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { recordRpc, reviewCorrections } from "../lib/authority";
 import Shell from "./Shell";
 import { useToast } from "./Toast";
 import {
@@ -68,6 +69,7 @@ export default function InstructorDashboard({ profile, onLogout }) {
   const { toast } = useToast();
   const [tab, setTab] = useState("overview");
   const [loading, setLoading] = useState(true);
+  const [reviewBusy, setReviewBusy] = useState(false);
   const [reportStates, setReportStates] = useState({});
 
   const [roster, setRoster] = useState([]);
@@ -239,98 +241,42 @@ export default function InstructorDashboard({ profile, onLogout }) {
   // Approving a request doesn't just flip its status — it has to actually
   // create or correct the attendance_logs row it's claiming, or the fix
   // would never show up in the intern's DTR or Weekly Hours Log graph.
-  const computeHours = (timeIn, timeOut) => {
-    if (!timeIn || !timeOut) return null;
-    const [h1, m1] = timeIn.split(":").map(Number);
-    const [h2, m2] = timeOut.split(":").map(Number);
-    const diff = (h2 * 60 + m2 - (h1 * 60 + m1)) / 60;
-    return Math.round(Math.max(0, diff) * 10) / 10;
+  const runReview = async (ids, decision) => {
+    if (reviewBusy || !ids.length) return;
+    setReviewBusy(true);
+    try {
+      const outcomes = await reviewCorrections(supabase, ids, decision);
+      const committed = outcomes.filter((r) => r.ok);
+      const failed = outcomes.filter((r) => !r.ok);
+      const rows = Object.fromEntries(committed.map((r) => [r.id, r.data]));
+      setExceptions((prev) => prev.map((e) => rows[e.id] ? { ...e, ...rows[e.id] } : e));
+      setSelectedEx((prev) => prev.filter((id) => !rows[id]));
+      if (committed.length) toast(committed.length + ' correction(s) ' + decision.toLowerCase(), 'success');
+      if (failed.length) toast(failed.length + ' failed: ' + failed[0].error, 'error');
+      if (committed.length) await loadAll();
+    } finally { setReviewBusy(false); }
   };
-
-  const applyExceptionToAttendance = async (ex) => {
-    const hours = computeHours(ex.claimed_time_in, ex.claimed_time_out);
-    const { data: existing } = await supabase
-      .from("attendance_logs")
-      .select("id")
-      .eq("intern_id", ex.intern_id)
-      .eq("log_date", ex.log_date)
-      .maybeSingle();
-
-    if (existing) {
-      const { error } = await supabase
-        .from("attendance_logs")
-        .update({ time_in: ex.claimed_time_in, time_out: ex.claimed_time_out, hours, verified: true, verified_by: profile.id })
-        .eq("id", existing.id);
-      if (error) toast(`Exception approved, but the attendance record couldn't be updated: ${error.message}`, "error");
-    } else {
-      const { error } = await supabase.from("attendance_logs").insert({
-        intern_id: ex.intern_id,
-        log_date: ex.log_date,
-        time_in: ex.claimed_time_in,
-        time_out: ex.claimed_time_out,
-        hours,
-        verified: true,
-        verified_by: profile.id,
-      });
-      if (error) toast(`Exception approved, but the attendance record couldn't be created: ${error.message}`, "error");
-    }
-  };
-
-  const approveEx = async (id) => {
-    const ex = exceptions.find((e) => e.id === id);
-    if (!ex) return;
-    const { error } = await supabase.from("attendance_exceptions").update({ status: "Approved", reviewed_by: profile.id }).eq("id", id);
-    if (error) return toast(error.message, "error");
-    await applyExceptionToAttendance(ex);
-    setExceptions((prev) => prev.map((e) => (e.id === id ? { ...e, status: "Approved" } : e)));
-    setSelectedEx((prev) => prev.filter((x) => x !== id));
-    toast("Time log exception approved — attendance record updated", "success");
-    loadAll();
-  };
-  const rejectEx = async (id) => {
-    const { error } = await supabase.from("attendance_exceptions").update({ status: "Rejected", reviewed_by: profile.id }).eq("id", id);
-    if (error) return toast(error.message, "error");
-    setExceptions((prev) => prev.map((e) => (e.id === id ? { ...e, status: "Rejected" } : e)));
-    setSelectedEx((prev) => prev.filter((x) => x !== id));
-    toast("Time log exception rejected");
-  };
-  const bulkApprove = async () => {
-    const ids = selectedEx.filter((id) => exceptions.find((e) => e.id === id)?.status === "Pending");
-    if (!ids.length) return;
-    const { error } = await supabase.from("attendance_exceptions").update({ status: "Approved", reviewed_by: profile.id }).in("id", ids);
-    if (error) return toast(error.message, "error");
-    const approvedExceptions = exceptions.filter((e) => ids.includes(e.id));
-    await Promise.all(approvedExceptions.map((ex) => applyExceptionToAttendance(ex)));
-    setExceptions((prev) => prev.map((e) => (ids.includes(e.id) ? { ...e, status: "Approved" } : e)));
-    toast(`${ids.length} exception(s) approved — attendance records updated`, "success");
-    setSelectedEx([]);
-    loadAll();
-  };
-  const bulkReject = async () => {
-    const ids = selectedEx.filter((id) => exceptions.find((e) => e.id === id)?.status === "Pending");
-    if (!ids.length) return;
-    const { error } = await supabase.from("attendance_exceptions").update({ status: "Rejected", reviewed_by: profile.id }).in("id", ids);
-    if (error) return toast(error.message, "error");
-    setExceptions((prev) => prev.map((e) => (ids.includes(e.id) ? { ...e, status: "Rejected" } : e)));
-    toast(`${ids.length} exception(s) rejected`);
-    setSelectedEx([]);
-  };
+  const approveEx = (id) => runReview([id], 'Approved');
+  const rejectEx = (id) => runReview([id], 'Rejected');
+  const bulkApprove = () => runReview(selectedEx.filter((id) => exceptions.find((e) => e.id === id)?.status === 'Pending'), 'Approved');
+  const bulkReject = () => runReview(selectedEx.filter((id) => exceptions.find((e) => e.id === id)?.status === 'Pending'), 'Rejected');
   const toggleSelectEx = (id) => setSelectedEx((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   const selectAllPending = () => setSelectedEx(exceptions.filter((e) => e.status === "Pending").map((e) => e.id));
 
   // ── Documents review ──
   const updateDocStatus = async (doc, status, note) => {
-    const { data, error } = await supabase
-      .from("documents")
-      .update({ status, note: note ?? doc.note, updated_at: new Date().toISOString() })
-      .eq("id", doc.id)
-      .select()
-      .single();
-    if (error) return toast(error.message, "error");
-    setDocs((prev) => prev.map((d) => (d.id === doc.id ? data : d)));
+    if (reviewBusy) return { ok: false };
+    setReviewBusy(true);
+    const result = await recordRpc(supabase, "review_document", {
+      p_id: doc.id, p_status: status, p_note: note ?? null, p_expected_path: doc.file_path,
+    });
+    setReviewBusy(false);
+    if (!result.ok) { toast(result.error, "error"); return result; }
+    setDocs((prev) => prev.map((d) => d.id === doc.id ? result.data : d));
     const name = internName(doc.intern_id);
     if (status === "Approved") toast(`${name} — document approved`, "success");
     else if (status === "Needs Revision") toast(`Revision requested for ${name}`, "info");
+    return result;
   };
 
   // ── Announcements ──
@@ -340,14 +286,15 @@ export default function InstructorDashboard({ profile, onLogout }) {
       return;
     }
     const target = annForm.target;
-    const targetIntern = target === "All Interns" ? null : roster.find((r) => r.name === target);
+    const targetIntern = target === "All Interns" ? null : roster.find((r) => r.id === target);
+    if (target !== "All Interns" && !targetIntern) return toast("Select a current recipient", "error");
     const { data, error } = await supabase
       .from("announcements")
       .insert({
         instructor_id: profile.id,
         title: annForm.title.trim(),
         body: annForm.body.trim(),
-        target,
+        target: target === "All Interns" ? "All Interns" : "Personal",
         target_intern_id: targetIntern?.id ?? null,
       })
       .select()
@@ -355,7 +302,7 @@ export default function InstructorDashboard({ profile, onLogout }) {
     if (error) return toast(error.message, "error");
     setAnnouncements((prev) => [data, ...prev]);
     setAnnForm({ title: "", body: "", target: "All Interns" });
-    toast("Announcement sent to " + target, "success");
+    toast("Announcement saved for " + (targetIntern?.name ?? "your active roster"), "success");
   };
 
   const selectedIntern = roster.find((r) => r.id === selectedDocInternId);
@@ -619,8 +566,8 @@ export default function InstructorDashboard({ profile, onLogout }) {
                 {selectedEx.length > 0 && (
                   <div className="flex items-center gap-2">
                     <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>{selectedEx.length} selected</span>
-                    <button onClick={bulkApprove} className="text-xs px-3 py-1.5 rounded-lg font-semibold" style={{ background: "var(--success-bg)", color: "var(--success)" }}>Approve All</button>
-                    <button onClick={bulkReject} className="text-xs px-3 py-1.5 rounded-lg font-semibold" style={{ background: "var(--danger-bg)", color: "var(--danger)" }}>Reject All</button>
+                    <button disabled={reviewBusy} onClick={bulkApprove} className="text-xs px-3 py-1.5 rounded-lg font-semibold" style={{ background: "var(--success-bg)", color: "var(--success)" }}>Approve All</button>
+                    <button disabled={reviewBusy} onClick={bulkReject} className="text-xs px-3 py-1.5 rounded-lg font-semibold" style={{ background: "var(--danger-bg)", color: "var(--danger)" }}>Reject All</button>
                   </div>
                 )}
                 {selectedEx.length === 0 && pendingEx > 0 && (
@@ -641,7 +588,7 @@ export default function InstructorDashboard({ profile, onLogout }) {
                   {exceptions.map((ex) => (
                     <tr key={ex.id} style={{ borderTop: "1px solid var(--border)", background: selectedEx.includes(ex.id) ? "var(--primary-light)" : undefined }}>
                       <td className="px-4 py-3">
-                        <input type="checkbox" checked={selectedEx.includes(ex.id)} disabled={ex.status !== "Pending"}
+                        <input type="checkbox" checked={selectedEx.includes(ex.id)} disabled={reviewBusy || ex.status !== "Pending"}
                           onChange={() => toggleSelectEx(ex.id)} className="w-3.5 h-3.5 rounded" />
                       </td>
                       <td className="px-4 py-3 text-xs font-medium">{ex.internName}</td>
@@ -660,8 +607,8 @@ export default function InstructorDashboard({ profile, onLogout }) {
                       <td className="px-4 py-3">
                         {ex.status === "Pending" && (
                           <div className="flex gap-1.5">
-                            <button onClick={() => approveEx(ex.id)} className="text-xs px-2 py-1 rounded-lg font-medium" style={{ background: "var(--success-bg)", color: "var(--success)" }}>Approve</button>
-                            <button onClick={() => rejectEx(ex.id)} className="text-xs px-2 py-1 rounded-lg font-medium" style={{ background: "var(--danger-bg)", color: "var(--danger)" }}>Reject</button>
+                            <button disabled={reviewBusy} onClick={() => approveEx(ex.id)} className="text-xs px-2 py-1 rounded-lg font-medium" style={{ background: "var(--success-bg)", color: "var(--success)" }}>Approve</button>
+                            <button disabled={reviewBusy} onClick={() => rejectEx(ex.id)} className="text-xs px-2 py-1 rounded-lg font-medium" style={{ background: "var(--danger-bg)", color: "var(--danger)" }}>Reject</button>
                           </div>
                         )}
                       </td>
@@ -797,10 +744,13 @@ export default function InstructorDashboard({ profile, onLogout }) {
                                 className="flex-1 text-sm py-1.5 px-3 rounded-lg border outline-none"
                                 style={{ borderColor: "var(--danger)", background: "var(--card)", color: "var(--foreground)" }} />
                               <button
-                                onClick={() => {
-                                  updateDocStatus(doc, "Needs Revision", revisionNoteForm[doc.id] ?? "");
-                                  setRevisionNoteForm((f) => ({ ...f, [doc.id]: "" }));
-                                  setShowRevisionInput(null);
+                                disabled={reviewBusy || !(revisionNoteForm[doc.id] ?? "").trim()}
+                                onClick={async () => {
+                                  const result = await updateDocStatus(doc, "Needs Revision", revisionNoteForm[doc.id] ?? "");
+                                  if (result?.ok) {
+                                    setRevisionNoteForm((f) => ({ ...f, [doc.id]: "" }));
+                                    setShowRevisionInput(null);
+                                  }
                                 }}
                                 className="text-xs px-3 py-1.5 rounded-lg font-semibold shrink-0" style={{ background: "var(--danger)", color: "#fff" }}>
                                 Send
@@ -861,8 +811,8 @@ export default function InstructorDashboard({ profile, onLogout }) {
               <div>
                 <label className="block text-xs font-medium mb-1" style={{ color: "var(--foreground)" }}>Recipients</label>
                 <select value={annForm.target} onChange={(e) => setAnnForm((f) => ({ ...f, target: e.target.value }))} className={inputCls} style={inputStyle}>
-                  <option>All Interns</option>
-                  {roster.map((r) => <option key={r.id} value={r.name}>{r.name}</option>)}
+                  <option value="All Interns">My active roster</option>
+                  {roster.map((r) => <option key={r.id} value={r.id}>{r.name} · {r.company} · {r.id.slice(-6)}</option>)}
                 </select>
               </div>
               <div>

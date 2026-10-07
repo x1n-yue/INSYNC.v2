@@ -6,9 +6,10 @@ Vitest uses its own config and Node environment. Tests replace global fetch with
 a throwing stub; the SDK probe supplies its own in-memory response, never a remote
 endpoint. Tests never import the application Supabase client or read .env files.
 
-`audit-baseline.test.js` permanently records seven audit probes as **characterization
-tests of known defects**, not proof of correctness. Its 11 cases include numeric
-input variants. Source extraction is intentionally temporary: it binds probes to
+`audit-baseline.test.js` records remaining audit probes as **characterization
+tests of known defects**, not proof of correctness. After Phase 1 it has 10 cases:
+the Manila owner date check now asserts corrected behavior, and overnight/seconds
+calculation moved to actual Postgres RPC tests. Source extraction is temporary: it binds probes to
 actual handlers/calculations while Phase 0 forbids application behavior changes.
 When a finding is fixed, replace that probe with shared-module or transport tests
 asserting the desired result; do not preserve buggy behavior just to keep it green.
@@ -23,6 +24,15 @@ asserting the desired result; do not preserve buggy behavior just to keep it gre
 | Month/year chart aggregation | INS-025 | Calendar periods and year-aware sums from shared derivation |
 | Token contrast | INS-034 | All supported status/action foreground-background pairs >=4.5 |
 
-SQL fixtures and policy test plan: `../supabase/tests/FIXTURES.md`. These are not
-implemented/executed policy tests yet. No build/test result asserts deployed RLS,
-Postgres transactions, Storage privacy, Auth, browser or accessibility correctness.
+`m01-authority.test.js` applies the actual M01 migration to in-memory PGlite using
+`../supabase/tests/baseline.sql`, never bootstrap. It tests real PostgreSQL RLS,
+grants, triggers and controlled operations against synthetic Auth/Storage tables.
+The matrix alone has 1,716 cases; protected-field, RPC and catalog cases supplement
+it. `authority-client.test.js` checks returned-record cardinality, target identity,
+transport failures and committed bulk outcomes. No network needed or permitted.
+
+Fixture and live test contracts: `../supabase/tests/FIXTURES.md` and `M01.md`.
+Local Postgres policy tests are implemented/executed. Supabase services/HTTP, signed
+URL delivery, JWT validation, two-connection races, browser and accessibility remain
+unverified. Build is compilation evidence only; local policy tests do not establish
+that deployed grants, functions or bucket privacy match this repository.
