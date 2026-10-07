@@ -1,5 +1,6 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { auditArtifact, downloadArtifact, templateArtifact } from "../lib/exports";
 import Shell from "./Shell";
 import Modal from "./Modal";
 import { useToast } from "./Toast";
@@ -70,9 +71,17 @@ export default function AdminDashboard({ profile, onLogout }) {
   // Master data modals — { table, editId, value }
   const [masterModal, setMasterModal] = useState(null);
 
-  // File import (client-side only demo; no backend to actually process the file)
-  const fileRef = useRef(null);
-  const [importFile, setImportFile] = useState(null);
+  const [exportBusy, setExportBusy] = useState(false);
+  const requestExport = async (createArtifact) => {
+    if (exportBusy) return;
+    setExportBusy(true);
+    try {
+      const artifact = await createArtifact();
+      downloadArtifact(artifact);
+      toast(`Download requested: ${artifact.filename}`, "info");
+    } catch (error) { toast(error.message || "Export failed; retry", "error"); }
+    finally { setExportBusy(false); }
+  };
 
   const loadAll = async () => {
     setLoading(true);
@@ -320,7 +329,7 @@ export default function AdminDashboard({ profile, onLogout }) {
     { label: "Total Users", value: `${users.length}`, sub: `${users.filter((u) => u.status === "Active").length} active`, icon: <IconUsers size={18} />, iconBg: "#eff6ff", iconColor: "#2563eb" },
     { label: "Active Interns", value: `${users.filter((u) => u.role === "intern" && u.status === "Active").length}`, sub: "Live count", icon: <IconGradCap size={18} />, iconBg: "#f0fdf4", iconColor: "#16a34a" },
     { label: "Companies", value: `${companies.length}`, sub: "In directory", icon: <IconBuilding size={18} />, iconBg: "#fefce8", iconColor: "#d97706" },
-    { label: "System Uptime", value: "99.8%", sub: "Last 30 days", icon: <IconCheck size={18} />, iconBg: "#f0fdf4", iconColor: "#16a34a" },
+    { label: "System Uptime", value: "Unavailable", sub: "Monitoring not connected", icon: <IconCheck size={18} />, iconBg: "#f0fdf4", iconColor: "#16a34a" },
   ];
 
   return (
@@ -548,51 +557,24 @@ export default function AdminDashboard({ profile, onLogout }) {
           {/* ── IMPORT ── */}
           {!loading && tab === "import" && (
             <div className="space-y-4">
-              <div
-                className="rounded-xl p-8 text-center cursor-pointer transition-colors"
-                style={{ background: "var(--card)", border: `2px dashed ${importFile ? "var(--primary)" : "var(--border)"}` }}
-                onClick={() => fileRef.current?.click()}
-              >
-                <div className="flex justify-center mb-3" style={{ color: importFile ? "var(--primary)" : "var(--muted-foreground)" }}>
+              <div className="rounded-xl p-8 text-center" style={{ background: "var(--card)", border: "2px dashed var(--border)" }}>
+                <div className="flex justify-center mb-3" style={{ color: "var(--muted-foreground)" }}>
                   <IconUpload size={36} strokeWidth={1.2} />
                 </div>
-                {importFile ? (
-                  <>
-                    <h3 className="text-sm font-semibold mb-1" style={{ color: "var(--primary)" }}>File selected</h3>
-                    <p className="text-xs mb-4" style={{ color: "var(--muted-foreground)" }}>{importFile}</p>
-                    <button
-                      className="text-sm px-4 py-2 rounded-lg font-medium"
-                      style={{ background: "var(--primary)", color: "#fff" }}
-                      disabled
-                    >
-                      Import unavailable
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <h3 className="text-sm font-semibold mb-1">Upload CSV / Excel</h3>
-                    <p className="text-xs mb-4" style={{ color: "var(--muted-foreground)" }}>
-                      Click to browse or drag and drop. Supports .csv and .xlsx
-                    </p>
-                    <button className="text-sm px-4 py-2 rounded-lg font-medium" style={{ background: "var(--primary)", color: "#fff" }}>
-                      Browse Files
-                    </button>
-                  </>
-                )}
+                <h3 className="text-sm font-semibold mb-1">Bulk import unavailable</h3>
+                <p className="text-xs mb-4" style={{ color: "var(--muted-foreground)" }}>File upload, drag and drop, validation and account creation are not implemented. Register accounts individually, then approve them through an administrator.</p>
+                <button disabled className="text-sm px-4 py-2 rounded-lg" style={{ background: "var(--secondary)" }}>Import unavailable</button>
               </div>
-              <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden"
-                onChange={(e) => { if (e.target.files?.[0]) setImportFile(e.target.files[0].name); }} />
               <div className="grid lg:grid-cols-2 gap-4">
-                {["Student Import Template", "Instructor Import Template"].map((t) => (
-                  <div key={t} className="rounded-xl p-4 flex items-center justify-between" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                {[{ kind: "student", title: "Student planning template" }, { kind: "instructor", title: "Instructor planning template" }].map((t) => (
+                  <div key={t.kind} className="rounded-xl p-4 flex flex-wrap gap-3 items-center justify-between" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                     <div>
-                      <div className="text-sm font-medium">{t}</div>
-                      <div className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>Download the required format</div>
+                      <div className="text-sm font-medium">{t.title}</div>
+                      <div className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>Blank headers only. Import is unavailable.</div>
                     </div>
-                    <button className="text-xs px-3 py-1.5 rounded-lg" style={{ background: "var(--secondary)", color: "var(--primary)" }}
-                      onClick={() => toast(`${t} downloaded`)}>
-                      Download
-                    </button>
+                    <div className="flex gap-2">{["csv", "xlsx"].map((format) => <button key={format} disabled={exportBusy}
+                      className="text-xs px-3 py-1.5 rounded-lg disabled:opacity-50" style={{ background: "var(--secondary)", color: "var(--primary)" }}
+                      onClick={() => requestExport(() => templateArtifact(t.kind, format))}>Download {format.toUpperCase()}</button>)}</div>
                   </div>
                 ))}
               </div>
@@ -604,9 +586,10 @@ export default function AdminDashboard({ profile, onLogout }) {
             <div className="rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
               <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid var(--border)" }}>
                 <span className="text-sm font-semibold">System Activity Log</span>
-                <button className="text-xs px-3 py-1.5 rounded-lg" style={{ background: "var(--secondary)", color: "var(--primary)" }}
-                  onClick={() => toast("Audit log exported as CSV")}>Export</button>
+                <button disabled={exportBusy} className="text-xs px-3 py-1.5 rounded-lg disabled:opacity-50" style={{ background: "var(--secondary)", color: "var(--primary)" }}
+                  onClick={() => requestExport(() => auditArtifact(supabase))}>{exportBusy ? "Preparing CSV…" : "Export audit CSV"}</button>
               </div>
+              <p className="px-4 py-2 text-xs" style={{ color: "var(--muted-foreground)" }}>Export fetches all authorized records, up to 50,000; the displayed list shows only the latest 50. Concurrent changes may require retry.</p>
               {logs.map((l) => (
                 <div key={l.id} className="px-4 py-3 flex gap-4 items-start" style={{ borderBottom: "1px solid var(--border)" }}>
                   <span className="font-mono text-xs shrink-0 mt-0.5 w-20" style={{ color: "var(--muted-foreground)" }}>
@@ -643,7 +626,7 @@ export default function AdminDashboard({ profile, onLogout }) {
                 <div className="space-y-2">
                   {[
                     { role: "System Admin", perms: ["Full access", "User management", "Audit logs"] },
-                    { role: "Instructor", perms: ["View & consolidate evaluations", "Generate reports", "View attendance", "Manage alerts"] },
+                    { role: "Instructor", perms: ["Assigned evaluations", "Reports unavailable", "Assigned attendance", "Manage assigned alerts"] },
                     { role: "Intern", perms: ["Log attendance", "View evaluations", "View progress"] },
                   ].map((r) => (
                     <div key={r.role} className="p-3 rounded-lg" style={{ background: "var(--muted)" }}>

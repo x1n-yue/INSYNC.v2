@@ -11,6 +11,7 @@ import {
 import { supabase } from "../lib/supabaseClient";
 import { manilaDate, recordRpc } from "../lib/authority";
 import { elapsedSession, formatBusinessDate, formatClockTime, isOpenSession } from "../lib/attendance";
+import { downloadArtifact, dtrArtifact } from "../lib/exports";
 import Shell from "./Shell";
 import Modal from "./Modal";
 import { useToast } from "./Toast";
@@ -77,6 +78,18 @@ export default function InternDashboard({ profile, onLogout }) {
   const { toast } = useToast();
   const [tab, setTab] = useState("dashboard");
   const [loading, setLoading] = useState(true);
+  const [exportBusy, setExportBusy] = useState(false);
+  const exportDtr = async () => {
+    if (exportBusy) return;
+    setExportBusy(true);
+    try {
+      const artifact = await dtrArtifact(supabase, profile.id);
+      downloadArtifact(artifact);
+      toast(`Download requested: ${artifact.filename} (${artifact.count} records)`);
+    } catch (error) {
+      toast(error.message || "DTR export failed", "error");
+    } finally { setExportBusy(false); }
+  };
   const [clockBusy, setClockBusy] = useState(false);
   const [clockLoadError, setClockLoadError] = useState(null);
   const [correctionBusy, setCorrectionBusy] = useState(false);
@@ -433,7 +446,7 @@ export default function InternDashboard({ profile, onLogout }) {
                     ))}
                   </div>
                   <button className="text-xs px-3 py-1.5 rounded-lg" style={{ background: "var(--secondary)", color: "var(--foreground)" }}
-                    onClick={() => toast("DTR exported as PDF")}>Export</button>
+                    disabled={exportBusy} onClick={exportDtr}>{exportBusy ? "Preparing CSV..." : "Export all CSV"}</button>
                 </div>
               </div>
               <div className="overflow-x-auto">
@@ -701,43 +714,18 @@ export default function InternDashboard({ profile, onLogout }) {
           <>
             <div>
               <h1 className="text-xl font-bold">Reports</h1>
-              <p className="text-sm mt-0.5" style={{ color: "var(--muted-foreground)" }}>Download your personal records and official documents</p>
+              <p className="text-sm mt-0.5" style={{ color: "var(--muted-foreground)" }}>Download an informational DTR CSV. Official reports and certificates are unavailable.</p>
             </div>
 
-            {clearanceReady ? (
-              <div className="rounded-xl p-4 flex items-center gap-4" style={{ background: "var(--success-bg)", border: "1px solid var(--success)" }}>
-                <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: "var(--success)", color: "#fff" }}>
-                  <IconAward size={20} />
-                </div>
-                <div className="flex-1">
-                  <div className="text-sm font-semibold" style={{ color: "var(--success)" }}>Certificate of Completion Unlocked</div>
-                  <div className="text-xs mt-0.5" style={{ color: "var(--success)" }}>You have completed {hoursRendered} hrs — exceeding the {hoursRequired}-hr minimum requirement.</div>
-                </div>
-                <button className="text-sm px-3 py-1.5 rounded-lg font-semibold shrink-0" style={{ background: "var(--success)", color: "#fff" }}
-                  onClick={() => toast("Certificate of Completion downloaded")}>
-                  Download
-                </button>
-              </div>
-            ) : (
-              <div className="rounded-xl p-4 flex items-center gap-4" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
-                <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: "var(--border)", color: "var(--muted-foreground)" }}>
-                  <IconAward size={20} />
-                </div>
-                <div className="flex-1">
-                  <div className="text-sm font-semibold" style={{ color: "var(--muted-foreground)" }}>Certificate of Completion</div>
-                  <div className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>
-                    Unlocks upon reaching {hoursRequired} required hours. You need {remainingHours.toFixed(1)} more hours.
-                  </div>
-                </div>
-                <div className="h-1.5 w-24 rounded-full overflow-hidden shrink-0" style={{ background: "var(--secondary)" }}>
-                  <div className="h-full rounded-full" style={{ width: `${Math.min(100, progress)}%`, background: "var(--primary)" }} />
-                </div>
-              </div>
-            )}
+            <div className="rounded-xl p-4" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+              <div className="text-sm font-semibold">Certificate of Completion unavailable</div>
+              <p className="text-xs mt-1">Certificate generation and institutional approval are not implemented.</p>
+              <button disabled className="text-xs mt-3 px-3 py-1.5 rounded-lg opacity-50">Certificate unavailable</button>
+            </div>
 
             <div className="grid lg:grid-cols-2 gap-4">
               {[
-                { title: "Daily Time Record (DTR)", desc: "Complete attendance log for the semester", icon: <IconClock size={22} /> },
+                { title: "Daily Time Record (DTR)", desc: "All your attendance records, with logged and verified hours distinguished; informational CSV only", icon: <IconClock size={22} /> },
                 { title: "Performance Summary", desc: "All evaluation scores and coordinator ratings", icon: <IconTrendingUp size={22} /> },
                 { title: "Weekly Hours Summary", desc: "Week-by-week hours breakdown", icon: <IconCalendar size={22} /> },
                 { title: "Document Archive", desc: "All uploaded clearance forms", icon: <IconFolder size={22} /> },
@@ -748,10 +736,13 @@ export default function InternDashboard({ profile, onLogout }) {
                     <div className="text-sm font-semibold">{r.title}</div>
                     <div className="text-xs mt-0.5 mb-3" style={{ color: "var(--muted-foreground)" }}>{r.desc}</div>
                     <div className="flex gap-2">
-                      <button className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{ background: "var(--primary)", color: "#fff" }}
-                        onClick={() => toast(`${r.title} downloaded as PDF`)}>PDF</button>
-                      <button className="text-xs px-3 py-1.5 rounded-lg" style={{ background: "var(--secondary)", color: "var(--foreground)" }}
-                        onClick={() => toast(`${r.title} downloaded as Excel`)}>Excel</button>
+                      {r.title === "Daily Time Record (DTR)" && (
+                        <button disabled={exportBusy} onClick={exportDtr} className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{ background: "var(--primary)", color: "#fff" }}>
+                          {exportBusy ? "Preparing CSV..." : "Export all CSV"}
+                        </button>
+                      )}
+                      <button disabled className="text-xs px-3 py-1.5 rounded-lg opacity-50">PDF unavailable</button>
+                      <button disabled className="text-xs px-3 py-1.5 rounded-lg opacity-50">Excel unavailable</button>
                     </div>
                   </div>
                 </div>

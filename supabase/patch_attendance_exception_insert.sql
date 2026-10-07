@@ -1,4 +1,7 @@
 -- =========================================================================
+-- HISTORICAL ONLY. Superseded by coordinated M01 authority migration.
+-- Do not execute as an upgrade: global instructor access violates roster scope.
+-- Follow RUNBOOK.md and migrations/; this file is not a repair path.
 -- Patch: allow instructors to INSERT attendance_logs rows
 --
 -- Why: approving a "Time Log Exception Request" now creates or corrects
@@ -9,9 +12,8 @@
 -- The original schema only allowed the intern themselves or an admin to
 -- insert; this patch adds instructors.
 --
--- Safe to run on its own, any time, without re-running the full
--- schema.sql (which would drop and recreate every table). Run this once
--- in the Supabase SQL editor.
+-- Retained for historical reference only. Do not execute this policy shortcut.
+-- schema.sql drops data; neither file is an existing-project repair path.
 -- =========================================================================
 
 drop policy if exists "attendance insert by intern or admin" on public.attendance_logs;

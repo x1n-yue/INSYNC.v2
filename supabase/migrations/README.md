@@ -49,3 +49,9 @@ Rollback: before commit SQL errors roll back the transaction. After commit disab
 affected operations and apply a reviewed forward repair while keeping authorization
 closed. Preserve all added evidence/recipient/timestamp columns. Do not restore
 legacy self-promotion, global instructor policies or public EXECUTE defaults.
+
+Phase 3 changes bootstrap/legacy-patch comments and operator/client guidance only;
+it adds no database migration and executes no SQL. Legacy bootstrap is fresh-
+disposable-only, destructive and insufficient for a remediated deployment alone.
+Never treat its hardcoded example seeds as current live organization/year data.
+Verify tooling, setup screen and honest downloads with ../tests/PHASE3.md.

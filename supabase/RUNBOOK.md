@@ -144,3 +144,28 @@ Audit pagination/read outages, Admin lifecycle atomicity and other zero-row
 handlers remain later phases. Legacy authorized staff provenance cannot be proven
 from stored role/status or a new audit source. Existing public URL consumers may
 lose access after M04; test authorized access rather than preserving public URLs.
+
+## Phase 3 client/tooling deployment checks
+
+No new SQL migration or data change. Bootstrap and old policy patch receive warning
+comments only; their executable bodies are not a repair path. New projects still
+need a reviewed initial catalog without demo seeds and ordered additive migrations.
+
+Use Node >=22.12.0, npm ci, tests/lint/build/audit; .nvmrc and Windows CI select
+Node 22/24. Set only public Supabase build settings using .env.example, then
+rebuild/redeploy. Missing/malformed settings render Setup required without SDK
+construction. Dev/preview listen on loopback; static HTTPS deployment serves dist
+with SPA fallback. Format checks do not validate connectivity/JWT signatures/RLS.
+
+Follow tests/PHASE3.md for disposable browser/API checks on templates, all-row audit
+and DTR CSV, injected failure, count changes and inactive sessions. Export limit:
+50,000 records, count-checked keyset reads rather than a transactional snapshot.
+No official certification or backup is claimed. Verify disabled controls, absent
+production demo shortcuts and provider backup status separately. Operators must
+rotate real accounts that reused the old demo password; no real inventory/login/
+rotation happens here.
+
+Rollback the client with a compatible reviewed build while retaining M01-M05
+authorization and private Storage. Never restore legacy permissive policies to
+support an older UI. Retain the tested lockfile/Node floor and review advisories
+before any dependency rollback.

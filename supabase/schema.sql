@@ -1,8 +1,13 @@
 -- =========================================================================
 -- INSync — Internship Performance Monitoring System
 -- Supabase (Postgres) schema, RLS policies, storage, and starter seed data
--- Run this in the Supabase SQL editor (or `supabase db push`) on a fresh
--- project. Requires the pgcrypto extension for gen_random_uuid().
+-- DESTRUCTIVE LEGACY BOOTSTRAP: FRESH DISPOSABLE PROJECTS ONLY.
+-- Drops domain tables and their data. NEVER run/re-run against existing data.
+-- This is NOT an upgrade/repair path and is NOT an automatically tracked CLI
+-- migration. Existing projects: inspection/ -> RUNBOOK.md -> migrations/.
+-- Legacy defaults/policies/seeds require reviewed versioned migrations before
+-- client use. This remediation does not execute this file anywhere.
+-- Requires the pgcrypto extension for gen_random_uuid().
 --
 -- Roles in this version: admin, instructor, intern (no supervisor role —
 -- instructors handle class tracking, rubric evaluations, DTR/document
@@ -12,10 +17,9 @@
 create extension if not exists pgcrypto;
 
 -- -------------------------------------------------------------------------
--- Clean slate — makes this script safely re-runnable. If a previous run
--- partially failed (e.g. an old table with different columns), this drops
--- everything from THIS schema before recreating it below. Safe to run on
--- a fresh project too (all DROPs are IF EXISTS).
+-- DESTRUCTIVE RESET of domain tables, including existing rows and dependencies.
+-- IF EXISTS only suppresses missing-object errors; it does not preserve data.
+-- Never use this block to recover a partial upgrade or repair a project.
 -- -------------------------------------------------------------------------
 
 drop trigger if exists on_auth_user_created on auth.users;

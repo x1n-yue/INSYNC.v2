@@ -1,11 +1,20 @@
 import { useEffect, useState } from "react";
-import { supabase } from "./lib/supabaseClient";
+import { supabase, setupError } from "./lib/supabaseClient";
 import LoginPage from "./components/LoginPage";
 import AdminDashboard from "./components/AdminDashboard";
 import InstructorDashboard from "./components/InstructorDashboard";
 import InternDashboard from "./components/InternDashboard";
 
 export default function App() {
+  if (setupError) return <div className="min-h-screen flex flex-col items-center justify-center gap-3 px-4 text-center" style={{ background: "var(--background)", color: "var(--foreground)" }}>
+    <h1 className="text-xl font-semibold">Setup required</h1>
+    <p role="alert" className="max-w-xl text-sm">{setupError}</p>
+    <p className="max-w-xl text-sm">Use the public settings in .env.example, then restart development or rebuild and redeploy. See the README for setup steps.</p>
+  </div>;
+  return <ConfiguredApp />;
+}
+
+function ConfiguredApp() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);

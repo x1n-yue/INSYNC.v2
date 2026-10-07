@@ -70,7 +70,6 @@ export default function InstructorDashboard({ profile, onLogout }) {
   const [tab, setTab] = useState("overview");
   const [loading, setLoading] = useState(true);
   const [reviewBusy, setReviewBusy] = useState(false);
-  const [reportStates, setReportStates] = useState({});
 
   const [roster, setRoster] = useState([]);
   const [alerts, setAlerts] = useState([]);
@@ -195,15 +194,6 @@ export default function InstructorDashboard({ profile, onLogout }) {
     { title: "At-Risk Intern Report", desc: "Interns with attendance below 60% — intervention doc", icon: <IconAlertTriangle size={22} /> },
   ];
 
-  const exportReport = (title, format) => {
-    setReportStates((s) => ({ ...s, [`${title}-${format}`]: "generating" }));
-    toast(`Generating ${title} (${format})…`, "info");
-    setTimeout(() => {
-      setReportStates((s) => ({ ...s, [`${title}-${format}`]: "done" }));
-      toast(`${title} ready — ${format} downloaded`);
-      setTimeout(() => setReportStates((s) => ({ ...s, [`${title}-${format}`]: "idle" })), 3000);
-    }, 1800);
-  };
 
   const dismissAlert = async (id) => {
     const { error } = await supabase.from("alerts").update({ dismissed: true }).eq("id", id);
@@ -796,18 +786,15 @@ export default function InstructorDashboard({ profile, onLogout }) {
                 <div className="flex-1">
                   <div className="text-sm font-semibold">{r.title}</div>
                   <div className="text-xs mt-0.5 mb-3" style={{ color: "var(--muted-foreground)" }}>{r.desc}</div>
+                  <p className="text-xs mb-2" style={{ color: "var(--muted-foreground)" }}>Report generation is unavailable.</p>
                   <div className="flex gap-2">
-                    {["PDF", "Excel"].map((fmt) => {
-                      const key = `${r.title}-${fmt}`;
-                      const state = reportStates[key] ?? "idle";
-                      return (
-                        <button key={fmt} disabled={state === "generating"} onClick={() => exportReport(r.title, fmt)}
+                    {["PDF", "Excel"].map((fmt) => (
+                        <button key={fmt} disabled
                           className="text-xs px-3 py-1.5 rounded-lg font-medium disabled:opacity-60 transition-all"
                           style={fmt === "PDF" ? { background: "var(--primary)", color: "#fff" } : { background: "var(--secondary)", color: "var(--foreground)" }}>
-                          {state === "generating" ? "Generating…" : state === "done" ? "✓ Done" : fmt}
+                          {fmt} unavailable
                         </button>
-                      );
-                    })}
+                    ))}
                   </div>
                 </div>
               </div>

@@ -1,10 +1,14 @@
 # Local remediation tests
 
 Run `npm test` (one run), `npm run test:watch` (local watcher) and `npm run lint`.
-Node 24.18.0 was used in Phase 0; runtime alignment is tracked under INS-037.
+Node >=22.12.0 is required; .nvmrc/CI check 22 and 24 (Phase 3 alignment).
 Vitest uses its own config and Node environment. Tests replace global fetch with
 a throwing stub; the SDK probe supplies its own in-memory response, never a remote
-endpoint. Tests never import the application Supabase client or read .env files.
+endpoint. Tests do not read .env files. Phase 3 imports the guarded app client
+with empty synthetic environment to assert setup-screen rendering without SDK
+construction or network (unrelated dashboards mocked). Production demo checks
+build in a separate process with env-file loading disabled. See
+supabase/tests/PHASE3.md.
 
 `audit-baseline.test.js` records remaining audit probes as **characterization
 tests of known defects**, not proof of correctness. After Phase 1 it has 10 cases:

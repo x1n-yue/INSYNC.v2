@@ -12,11 +12,12 @@ import {
   IconAlertTriangle,
 } from "./Icons";
 
-const demoAccounts = [
+const demoEnabled = import.meta.env.DEV && import.meta.env.VITE_DEMO_MODE === "true";
+const demoAccounts = import.meta.env.DEV && import.meta.env.VITE_DEMO_MODE === "true" ? [
   { label: "Admin", email: "admin@insync.ph" },
   { label: "Instructor", email: "instructor@bsu.edu.ph" },
   { label: "Intern", email: "andrea@intern.ph" },
-];
+] : [];
 
 const roleOptions = [
   { value: "intern", label: "Intern / Student", desc: "Track hours & evaluations" },
@@ -85,8 +86,10 @@ export default function LoginPage() {
   const regValid = regName && regEmail && regPassword.length >= 8 && passwordMatch && regRole;
 
   const fillDemo = (demoEmail) => {
-    setEmail(demoEmail);
-    setPassword("password123");
+    if (import.meta.env.DEV && import.meta.env.VITE_DEMO_MODE === "true") {
+      setEmail(demoEmail);
+      setPassword("password123");
+    }
   };
 
   const handleSignIn = async (e) => {
@@ -182,7 +185,7 @@ export default function LoginPage() {
               type="email"
               value={email}
               onChange={setEmail}
-              placeholder="andrea@intern.ph"
+              placeholder="you@example.com"
               icon={<IconMail size={15} />}
             />
             <InputField
@@ -214,10 +217,9 @@ export default function LoginPage() {
               {submitting ? "Signing in…" : "Sign In"}
             </button>
 
-            <div>
+            {demoEnabled && <div>
               <p className="text-xs text-center mb-2.5" style={{ color: "var(--muted-foreground)" }}>
-                Demo accounts (create these via Register first, then have an admin
-                activate them)
+                Disposable demo project only. Staff roles require trusted Admin approval.
               </p>
               <div className="grid grid-cols-3 gap-2">
                 {demoAccounts.map((d) => (
@@ -237,7 +239,7 @@ export default function LoginPage() {
                   </button>
                 ))}
               </div>
-            </div>
+            </div>}
           </form>
         )}
 

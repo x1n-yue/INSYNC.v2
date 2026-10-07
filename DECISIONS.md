@@ -1,6 +1,6 @@
 # Remediation decisions
 
-Phases 0-2, 2026-10-07. These are conservative **assumed defaults**, not confirmed
+Phases 0-3, 2026-10-07. These are conservative **assumed defaults**, not confirmed
 institutional policy. Ambiguous behavior is paused at this decision record before
 implementation; work continues using these defaults as requested. Phase 1 implements
 the authority subset and its controlled-operation prerequisites. Update the relevant decision, shared module, migration,
@@ -36,8 +36,12 @@ new rule retroactively by silently rewriting legacy data.
 | D25 | New audit source is database-trigger-v2; NULL/other source remains legacy/unverified. auth.uid() supplies actor and clock_timestamp() supplies time. A NULL actor means system/trusted SQL context, never an invented human identity. | Audit 11 business tables with minimal changed-field/status/assignment metadata. No-op/zero-row writes create no event. Direct browser audit writes denied, mandatory audit failures abort mutation; legacy events never backfilled as trusted (INS-009). |
 | D26 | Bulk correction review accepts 1-100 UUIDs, deduplicates, orders intern/request locks, returns one actual outcome per unique request. Each item is a subtransaction; failed attendance or audit rolls that entire item back. Rejection note required; optional approval note, <=500 characters. | Mixed batches preserve failed selections/note draft. Missing/duplicate/inconsistent response or transport failure means refresh before retry; commit may have happened if its response was lost. One item's success does not certify the batch (INS-010/032/039). |
 | D27 | Open-session reads are independent of today's date and the paginated history; an open legacy row lacking a trusted instant is unknown, not a counted Active Now session or invented elapsed duration. | Clock display uses Manila; elapsed device clock is informational. Negative device elapsed time says check device clock. Server RPC is the only source of date, transition and duration authority. Legacy session requires correction (INS-012). |
+| D28 | Import remains disabled, including file selection/drag-drop. Downloadable student/instructor CSV/XLSX templates contain only blank planning headers (name, email, organization, student ID for students), never passwords/effective roles/status. | Account provisioning, duplicate identities and approved bulk lifecycle contract are not implemented. Templates do not create accounts or promise import; manual Auth registration/Admin approval remains the supported path (INS-023). |
+| D29 | DTR export is all authorized own attendance, CSV, informational/unofficial, independent of dashboard period filters. Audit export is all authorized audit rows through an upper-bound record ID, with legacy provenance labeled unverified. | Bound each export at 50,000 records; paginate by immutable UUID to avoid API row-cap/offset truncation; verify exact counts, ordered unique IDs and final count. Fail without a download on missing/error/changing counts; no invented totals. This is not a transactional database snapshot; simultaneous equal-count edits may still occur. Full snapshot/aggregates stay Phase 5 (INS-023/027). |
+| D30 | DTR exports distinguish trusted valid logged duration, verified evidence, open, and legacy/invalid unknown. Legacy/missing/inconsistent instants/hours never become certified totals; raw stored hours retained in a separate column. CSV formula-like text is escaped as literal text. | Preserve original evidence in DB. No clearance/certificate issuance inferred from export or current UI eligibility. Certificate, instructor reports and other intern summaries/archives remain disabled until implemented (INS-023/025). |
+| D31 | Demo shortcuts require VITE_DEMO_MODE=true AND a development build; production builds never include the known demo password/accounts, even if the flag is accidentally true. | Separate disposable demo project only. No real-account login/inventory/rotation in this session; operator must rotate any real account that reused the public password (INS-038). |
 
-Tooling choice: standalone Node Vitest configuration keeps application build,
+Historical Phase 0 tooling choice: standalone Node Vitest configuration kept application build,
 runtime, dev host and source behavior unchanged. Use patched Vitest 4.1.11 instead
 of the initially trialed 3.x version, whose dependency audit added critical
 advisories. Vitest's nested Vite is independent of application Vite 5.4.21; the
@@ -63,3 +67,5 @@ or bootstrap is read. Tests require platform binaries and an ordinary OS user
 (Postgres refuses root); do not enable OS-user creation to bypass that limitation.
 Native concurrency is observed via pg_stat_activity advisory-lock waits before
 releasing contenders. This is local DB evidence, not deployed Supabase API proof.
+
+Phase 3 aligns engines at >=22.12.0, .nvmrc/CI Node 22 and 24; upgrades application Vite to 7.3.7, React plugin 5.2.0, esbuild 0.28.2, source-map-js 1.2.2. ESLint 9 remains a documented unsupported-major notice because the React plugin does not declare ESLint 10 compatibility. No forced dependency fix.

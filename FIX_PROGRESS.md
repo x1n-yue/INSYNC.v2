@@ -1,18 +1,17 @@
 # INSync remediation progress
 
-Updated 2026-10-07, Phases 0-2. Owner: repository remediation agent. Both audit
-and checklist read in full before edits. Starting HEAD `75998c0` (the audit refers
-to an earlier source revision); working tree was clean. No applicable AGENTS.md
-found in workspace/ancestor locations. Phase 0 left application behavior unchanged;
-Phases 1-2 change affected UI and author M01-M05. Bootstrap, legacy patch and Vite config
-remain unchanged. No remote Supabase/real-project SQL execution.
+Updated 2026-10-07, Phases 0-3. Both audit and checklist read fully before edits.
+Starting HEAD 75998c0; no applicable AGENTS.md in workspace/ancestors. Phase 0
+left behavior unchanged, Phases 1-2 authored M01-M05 and affected UI, Phase 3
+updates tooling, honest downloads, setup guard and bootstrap warning comments.
+No real project SQL/Auth/Storage execution, credential output or legacy row repair.
 
-**Phases 0-2 complete; local verification recorded below.**
-INS-001..012, INS-015/016 are **Fixed-pending-live-verification** (14 findings);
-25 findings remain Not-fixed with the reasons/phases below.
-Tests that reproduce defects must not be interpreted as fixes or deployed security
-evidence. Defaults are recorded in `DECISIONS.md` and can be revised before their
-phase. Stop after the Phase 2 commit; Phase 3 starts only on the user's “continue.”
+**Phases 0-3 complete.** All 39 findings remain tracked below: 3 Fixed,
+17 Fixed-pending-live-verification, 19 Not-fixed for the stated later-phase work.
+Known-defect characterization tests are not remediation evidence. Assumptions
+are in DECISIONS.md. Stop after the Phase 3 commit and await the user's continue;
+Phase 4 has not started. Earlier phase records below describe their then-current
+state and are retained as history, including advisories resolved in Phase 3.
 
 ## Phase 0 artifacts and checks
 
@@ -145,6 +144,53 @@ Phase 4. Read failures/pagination/lifecycle/other zero-row handlers remain later
 phases. New audit cannot certify previously authorized staff or historical claims.
 No production-readiness or deployed-security claim.
 
+## Phase 3 implementation and verification
+
+Starting revision 74644c9. User authorized Phase 3 by continue.
+
+- package.json/lock: application Vite 7.3.7, React plugin 5.2.0, esbuild 0.28.2,
+  source-map-js override 1.2.2. Preserves esbuild pipeline rather than switching
+  compiler architecture. No forced audit fix. Node floor >=22.12.0, .nvmrc 22,
+  Windows CI matrix 22/24. Dev/preview host 127.0.0.1; no default network exposure.
+- src/lib/config.js, supabaseClient.js, App.jsx, .env.example: format-checked public
+  publishable/legacy anon setup; missing/malformed/private values never construct
+  SDK; safe setup screen, constructor failures redacted. Format validation does
+  not establish key authenticity or solve Phase 5 offline/auth state recovery.
+- src/lib/exports.js and all three dashboards: actual blank planning CSV/XLSX,
+  fresh all-authorized audit CSV and own all-record DTR CSV; keyset/API-cap/count/
+  identity guards, role/status recheck, 50,000 limit, spreadsheet literal escaping,
+  logged/verified/open/unknown evidence, real Blob dispatch/URL cleanup and busy/error
+  state. Downloads are requested, never claimed saved. XLSX dependency loads on demand.
+- Bulk import/file selection/drag-drop, instructor reports, intern PDF/Excel
+  summaries/archives and certificates disabled and visibly unavailable. Removed
+  fake certificate eligibility/download claims and uptime literal. Backup remains
+  unavailable/not connected; no fake client audit writes reintroduced.
+- Login demo shortcuts require explicit true AND development. Production test
+  with flag true verifies all known demo account/password literals absent; generic
+  sign-in placeholder. Real-account reuse inventory/rotation is an operator task.
+- README, RUNBOOK, migration guide, PHASE3 verification and D28-D31 document setup,
+  deployment, review/rehearsal/rollback and business defaults. Bootstrap and historical
+  patch executable bodies unchanged; only destructive/superseded warning comments
+  changed. No Phase 3 DB migration or bootstrap execution.
+
+| Check | Phase 3 actual result / limit |
+|---|---|
+| npm test, Node 24.18.0 | 9 files, 2,061 cases passed (2,012 existing + 49 new). Includes synthetic SQL/races, export byte/ZIP/transport checks, actual App setup SSR with unrelated dashboards mocked, separate actual production build with demo flag true. |
+| npm run build, Node 24 | Passed: Vite 7.3.7, 753 modules; main JS 935.73 kB / gzip 264.57 kB; lazy XLSX JS 71.27 kB / gzip 19.77 kB; CSS 22.77 kB / gzip 5.32 kB. Before Phase 3: JS 933.62 kB / gzip 261.38 kB, CSS 22.88 / 5.38. Large dashboard chunk persists, INS-036 Phase 6. |
+| npm run lint | Passed, zero errors; same six existing unused-import warnings. |
+| Clean install on Node 22.12.0 | Fresh disposable copy excluding ignored .env/node_modules/dist, npm ci succeeded; full 2,060 tests and build passed; audit zero. Final future-evidence regression also passes in the 2,061-case full suite on Node 22 from the workspace. Initial cold startup test timeout resolved by isolating unrelated dashboards. Windows TEMP 8.3 alias caused Vite HTML path mismatch; build passed from canonical long path. Use canonical workspace paths. |
+| npm audit --ignore-scripts | Zero vulnerabilities, after upgrade and fresh Node 22 install. Point-in-time dependency snapshot only. |
+| npm ls --all | Passed; no invalid dependency problems (also resolves former old root esbuild/optional-peer mismatch). |
+| Source / SQL review | git diff --check passes; only comments change in legacy SQL, M01-M05 unchanged; no real Supabase project operations or .env contents read/output. |
+| Remote CI / browser / live Supabase / a11y | Not executed. CI authored; PHASE3.md provides reviewable manual checks. Actual downloads, spreadsheet apps, valid-project/offline/auth flows, deployed RLS/Storage and screen readers remain unverified. |
+
+Residuals: equal-count concurrent edits can yield mixed-time exports; no transactional
+snapshot claimed (INS-027). Full dashboard totals/pagination/auth recovery remain
+Phases 4/5. No importer, official certificate or backup implementation claimed.
+ESLint 9 remains an unsupported-major notice while React lint plugin declares no
+ESLint 10 support; no npm advisory currently. Provider backup status and old demo
+password reuse must be checked by authorized operators. No production-ready claim.
+
 ## Finding register
 
 M01 refers to `supabase/migrations/M01_authority.sql`; SQL suite refers to
@@ -166,8 +212,8 @@ remain in `tests/audit-baseline.test.js`; local SQL checks are separate evidence
 | INS-010 | Fixed-pending-live-verification | M02; authority.js; InstructorDashboard; native/transport suites; D26 | Existing/missing-day reconciliation, note, failed insert/update/exception/audit rollback, mixed bulk and observed concurrent approve/reject races pass. Live SDK shapes/JWT/API races RT-11/12/13 pending. |
 | INS-011 | Fixed-pending-live-verification | M03/M05; migration gates/native SQL; D01/D24 | Daily/open/Pending unique identities, guarded ID-only clock closure and busy states; real concurrent transitions commit once. Legacy duplicates stop migration unchanged; real preflight/deployment/live RT-08/12/13 pending. |
 | INS-012 | Fixed-pending-live-verification | M01/M03; attendance.js; dashboards; helper/native SQL; D02/D03/D27 | Trusted instants/server Manila date, independent open query, overnight/seconds elapsed, Instructor Active Now across dates, explicit unknown legacy state. Device timezone display tested locally; legacy evidence/browser/live RT-09/17 pending. |
-| INS-013 | Not-fixed | RUNBOOK.md; inspection/README.md | Pending RT-22; Phase 3; old bootstrap/README unsafe wording unchanged, runbook forbids existing-data use. |
-| INS-014 | Not-fixed | package tooling; audit baseline recorded above | Pending RT-22; Phase 3; 3 existing vulnerable packages/dev host remain. |
+| INS-013 | Fixed | schema.sql warning comments; historical patch warning; README; migrations/README; RUNBOOK | RT-22 document/diff review: destructive bootstrap never an existing-data repair path; executable SQL unchanged, no SQL executed. |
+| INS-014 | Fixed | package.json/lock; vite.config.js; phase3-production.test.js | Patched compatible tooling, loopback dev/preview; full build/tests on Node 24 and clean Node 22.12; npm audit zero, npm ls all valid. Browser baseline verification pending; ESLint unsupported-major notice documented. |
 | INS-015 | Fixed-pending-live-verification | M04; native SQL/migration gates; D11 | Existing public bucket explicitly private with MIME/10 MiB settings; unrelated bucket retained; missing bucket aborts. Actual object delivery/upload enforcement/live RT-04/15 unverified. |
 | INS-016 | Fixed-pending-live-verification | M03/M05; inspection/03; native SQL/migration gates; D03/D17/D24 | Independent new-row interval/hours/review/reason CHECKs, future-write guards, Pending uniqueness. Equal/negative/ambiguous/excessive/future invalid; explicit overnight/max16h/one-second valid. Historical validation and live RT-09/10/12 pending. |
 | INS-017 | Not-fixed | inspection/02_anomalies.sql; FIXTURES.md; D12 | Pending RT-14; Phase 4; malformed/null/inconsistent scores still accepted. |
@@ -176,7 +222,7 @@ remain in `tests/audit-baseline.test.js`; local SQL checks are separate evidence
 | INS-020 | Not-fixed | inspection/02_anomalies.sql; D10 | Pending RT-07; Phase 4; duplicates/partial provisioning unchanged. |
 | INS-021 | Not-fixed | FIXTURES.md; D11 | Pending RT-04/15; Phase 4; no private View/Download UI yet. |
 | INS-022 | Not-fixed | inspection/02_anomalies.sql; D10/D11 | Pending RT-15; Phase 4; upload/version/cleanup races unchanged. |
-| INS-023 | Not-fixed | Admin fake backup/import disabled; fake client events removed; D05/D15 | Partial Phase 2 improvement. Phase 3 must disable remaining fake templates/exports/reports/drag-drop/uptime and implement commissioned real artifacts. RT-20 pending. |
+| INS-023 | Fixed-pending-live-verification | exports.js; all dashboards; phase3-exports.test.js; PHASE3.md; D28-D30 | Real CSV/XLSX templates, audit/DTR CSV with fresh paginated data and error/count guards; disabled labeled simulations. 30 artifact/transport cases pass. RT-20 actual browser/spreadsheet and >1,000 live synthetic API rows pending; equal-count edits not snapshot-safe. |
 | INS-024 | Not-fixed | Instructor UUID targeting implemented with M01; D07 | Pending RT-16; Phase 4; Intern loading/empty/error message feed still absent. |
 | INS-025 | Not-fixed | baseline chart probe; D02/D04/D05/D13 | Cross-year averaging reproduced; pending RT-17/18; Phase 4; shared metrics not extracted yet. |
 | INS-026 | Not-fixed | FIXTURES.md | Pending RT-18/19; Phase 5; failed reads still resemble empty data. |
@@ -184,14 +230,14 @@ remain in `tests/audit-baseline.test.js`; local SQL checks are separate evidence
 | INS-028 | Not-fixed | FIXTURES.md | Pending RT-19; Phase 5; auth race/missing-profile handling unchanged. |
 | INS-029 | Not-fixed | REPAIR_PROPOSAL.md; D16 | Pending RT-06/21; Phase 6; deletion impact/stale dependent forms unchanged. |
 | INS-030 | Not-fixed | inspection/02_anomalies.sql; D14 | Pending RT-06; Phase 6; section/current-year flows absent. |
-| INS-031 | Not-fixed | .env.example | Template added; pending RT-19/22; Phase 3; startup still crashes without valid config. |
+| INS-031 | Fixed-pending-live-verification | config.js; supabaseClient.js; App.jsx; .env.example; phase3-config.test.js | 18 synthetic config/SSR cases pass; missing/malformed/private setup no SDK/import crash, safe screen. Real browser/setup/deployment RT-19/22 pending; format guard does not validate key/project or fix Phase 5 auth/offline state. |
 | INS-032 | Not-fixed | M01 structured RPC outcomes; two dependent form handlers awaited; D17 | Partial prerequisite improvement; Phase 5 all-form failure/busy/length/draft handling and RT-08/15/19 pending. |
 | INS-033 | Not-fixed | FIXTURES.md | Pending RT-21 browser/screen-reader; Phase 6; dialog/input/toast issues unchanged. |
 | INS-034 | Not-fixed | baseline contrast probe | Low contrast reproduced; pending RT-21; Phase 6; token changes not made. |
 | INS-035 | Not-fixed | FIXTURES.md | Pending RT-06/21; Phase 6; action terms/colors unchanged. |
 | INS-036 | Not-fixed | before-build sizes above | Pending RT-18/22; Phase 6; eager dashboard/chart chunk remains. |
-| INS-037 | Not-fixed | test tooling runtime documented; DECISIONS.md | Pending RT-22; Phase 3; engines >=18 remains inconsistent with dependency tree. |
-| INS-038 | Not-fixed | FIXTURES.md; D08 | Pending RT-01/20; Phase 3; demo shortcut still exposed, no real-account inventory/rotation performed. |
+| INS-037 | Fixed | package.json/lock; .nvmrc; .github/workflows/verify.yml; README | Node >=22.12 floor; Node 22.12 clean npm ci/full tests/build/audit and Node 24 checks pass. CI 22/24 authored, not remotely executed. Windows short-path alias caveat documented. |
+| INS-038 | Fixed-pending-live-verification | LoginPage.jsx; phase3-production.test.js; .env.example; README; D31 | Explicit development-only demo flag. Actual production build with true flag excludes known demo password/emails. RT-01/20 browser pending; no real-account inventory/rotation, operator must rotate any reuse. |
 | INS-039 | Not-fixed | M01 record RPC cardinality/target checks; baseline zero-row assignment probe | RPC calls reject empty/mismatched outcomes; Admin/alert/master mutations still need assertions. Pending RT-19; Phase 5. |
 
 Paths inspection/*, REPAIR_PROPOSAL.md and FIXTURES.md refer to their respective
