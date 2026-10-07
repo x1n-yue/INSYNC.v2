@@ -1,7 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { recordRpc, reviewCorrections } from "../lib/authority";
 import { formatBusinessDate, isOpenSession } from "../lib/attendance";
+import { RUBRIC, evaluationResult, requiredHours, rubricScore } from "../lib/business";
+import { displayHours, internMetrics } from "../lib/metrics";
+import { completeRows, saveEvaluation } from "../lib/workflows";
+import DocumentActions from "./DocumentActions";
+import EvaluationCriteria from "./EvaluationCriteria";
 import Shell from "./Shell";
 import { useToast } from "./Toast";
 import {
@@ -20,19 +25,15 @@ const navItems = [
   { id: "announcements", label: "Announcements", icon: <IconBell size={15} /> },
 ];
 
-const rubricCriteria = [
-  { id: "punctuality", label: "Punctuality & Attendance", weight: 0.25 },
-  { id: "performance", label: "Task Performance & Quality", weight: 0.35 },
-  { id: "conduct", label: "Professional Conduct", weight: 0.2 },
-  { id: "communication", label: "Communication Skills", weight: 0.2 },
-];
+const rubricCriteria = RUBRIC;
 const scaleLabels = { 1: "Poor", 2: "Fair", 3: "Satisfactory", 4: "Good", 5: "Excellent" };
 
 const inputStyle = { borderColor: "var(--border)", background: "var(--card)", color: "var(--foreground)" };
 const inputCls = "w-full text-sm py-2 px-3 rounded-lg border outline-none";
 
 function ProgressBar({ value, max }) {
-  const pct = max > 0 ? Math.round((value / max) * 100) : 0;
+  if (value == null || requiredHours(max) === null) return <span className="text-xs">Unavailable</span>;
+  const pct = Math.min(100, Math.floor(value / Number(max) * 100));
   const color = pct >= 100 ? "var(--success)" : pct > 60 ? "var(--primary)" : "var(--warning)";
   return (
     <div className="flex items-center gap-2">
@@ -50,8 +51,9 @@ function StatusBadge({ status }) {
     "At Risk": { bg: "var(--danger-bg)", color: "var(--danger)" },
     "Near Complete": { bg: "var(--info-bg)", color: "var(--info)" },
     Completed: { bg: "var(--success-bg)", color: "var(--success)" },
+    Unknown: { bg: "var(--muted)", color: "var(--muted-foreground)" },
   };
-  return <span className="text-xs px-2 py-0.5 rounded-full" style={map[status] ?? map["On Track"]}>{status}</span>;
+  return <span className="text-xs px-2 py-0.5 rounded-full" style={map[status] ?? map.Unknown}>{status}</span>;
 }
 
 function DocStatusPill({ status }) {
@@ -71,7 +73,12 @@ export default function InstructorDashboard({ profile, onLogout }) {
   const [loading, setLoading] = useState(true);
   const [reviewBusy, setReviewBusy] = useState(false);
 
-  const [roster, setRoster] = useState([]);
+  const [rosterBase, setRoster] = useState([]);
+  const [metricAttendance, setMetricAttendance] = useState(null);
+  const [metricsError, setMetricsError] = useState(null);
+  const [evalBusy, setEvalBusy] = useState(false);
+  const evalAttempt = useRef(null);
+  const evalInFlight = useRef(false);
   const [alerts, setAlerts] = useState([]);
   const [evalRecords, setEvalRecords] = useState([]);
   const [exceptions, setExceptions] = useState([]);
@@ -96,66 +103,65 @@ export default function InstructorDashboard({ profile, onLogout }) {
   // Announcements
   const [annForm, setAnnForm] = useState({ title: "", body: "", target: "All Interns" });
 
+  const roster = useMemo(() => rosterBase.map(r => {
+    const metric = internMetrics({ internId: r.id, required: r.required, attendance: metricAttendance?.filter(a => a.intern_id === r.id), documents: docs?.filter(d => d.intern_id === r.id) });
+    return { ...r, hours: metric.verified, logged: metric.logged, cleared: metric.cleared, status: metric.risk, remaining: metric.remaining };
+  }), [rosterBase, metricAttendance, docs]);
   const loadAll = async () => {
     setLoading(true);
-    const { data: internRows } = await supabase
-      .from("interns")
-      .select("id, required_hours, status, profiles!interns_id_fkey(full_name), companies(name)")
-      .eq("instructor_id", profile.id);
-
+    const capture = table => completeRows(supabase, table).then(data => ({ data })).catch(error => ({ data: null, error }));
+    const [internResult, peopleResult, companyResult] = await Promise.all([capture("interns"), capture("profiles"), capture("companies")]);
+    const internRows = internResult.data?.filter(r => r.instructor_id === profile.id).map(r => ({ ...r,
+      profiles: peopleResult.data?.find(p => p.id === r.id), companies: companyResult.data?.find(c => c.id === r.company_id) })).filter(r => r.profiles?.role === "intern");
     const internIds = (internRows ?? []).map((r) => r.id);
 
     const [
-      { data: attendanceRows },
+      { data: attendanceRows, error: attendanceError },
       { data: openRows, error: openError },
       { data: evalRows },
       { data: exceptionRows },
-      { data: docRows },
+      { data: docRows, error: docError },
       { data: alertRows },
       { data: annRows },
     ] = await Promise.all([
-      internIds.length ? supabase.from("attendance_logs").select("intern_id, hours").in("intern_id", internIds) : Promise.resolve({ data: [] }),
+      capture("attendance_logs"),
       internIds.length ? supabase.from("attendance_logs").select("intern_id, time_in, time_out, clocked_in_at, clocked_out_at").in("intern_id", internIds).is("time_out", null) : Promise.resolve({ data: [] }),
-      internIds.length ? supabase.from("evaluations").select("*").in("intern_id", internIds).order("created_at", { ascending: false }) : Promise.resolve({ data: [] }),
+      capture("evaluations"),
       internIds.length ? supabase.from("attendance_exceptions").select("*").in("intern_id", internIds).order("created_at", { ascending: false }) : Promise.resolve({ data: [] }),
-      internIds.length ? supabase.from("documents").select("*").in("intern_id", internIds).order("name") : Promise.resolve({ data: [] }),
+      capture("documents"),
       internIds.length ? supabase.from("alerts").select("*").in("intern_id", internIds).eq("dismissed", false).order("created_at", { ascending: false }) : Promise.resolve({ data: [] }),
       supabase.from("announcements").select("*").eq("instructor_id", profile.id).order("created_at", { ascending: false }),
     ]);
 
-    const hoursByIntern = {};
-    (attendanceRows ?? []).forEach((a) => {
-      if (a.hours) hoursByIntern[a.intern_id] = (hoursByIntern[a.intern_id] ?? 0) + Number(a.hours);
-    });
+    setMetricAttendance(attendanceRows);
+    setMetricsError(internResult.error?.message || peopleResult.error?.message || companyResult.error?.message || attendanceError?.message || docError?.message || null);
     if (openError) toast(`Unable to load open sessions: ${openError.message}`, "error");
     const clockedInSet = new Set((openRows ?? []).filter(isOpenSession).map((t) => t.intern_id));
     const unknownSessionSet = new Set((openRows ?? []).filter((row) => !isOpenSession(row)).map((t) => t.intern_id));
     const latestScoreByIntern = {};
-    (evalRows ?? []).forEach((e) => {
-      if (!(e.intern_id in latestScoreByIntern)) latestScoreByIntern[e.intern_id] = e.overall_score;
+    [...(evalRows ?? [])].sort((a,b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id)).forEach((e) => {
+      if (!(e.intern_id in latestScoreByIntern)) latestScoreByIntern[e.intern_id] = evaluationResult(e);
     });
 
     const internNameById = {};
     const mergedRoster = (internRows ?? []).map((r) => {
       internNameById[r.id] = r.profiles?.full_name ?? "Unknown";
-      const hours = Math.round((hoursByIntern[r.id] ?? 0) * 10) / 10;
       return {
         id: r.id,
         name: r.profiles?.full_name ?? "Unknown",
         company: r.companies?.name ?? "—",
-        hours,
         required: r.required_hours,
         midterm: latestScoreByIntern[r.id] ?? null,
-        status: r.status,
+        accountStatus: r.profiles.status,
+        studentId: r.profiles.student_id,
         clockedIn: openError || unknownSessionSet.has(r.id) ? null : clockedInSet.has(r.id),
-        cleared: hours >= r.required_hours,
       };
     });
 
     setRoster(mergedRoster);
     setEvalRecords((evalRows ?? []).map((e) => ({ ...e, internName: internNameById[e.intern_id] ?? "—" })));
     setExceptions((exceptionRows ?? []).map((e) => ({ ...e, internName: internNameById[e.intern_id] ?? "—" })));
-    setDocs(docRows ?? []);
+    setDocs(docRows);
     setAlerts((alertRows ?? []).map((a) => ({ ...a, internName: internNameById[a.intern_id] ?? "—" })));
     setAnnouncements(annRows ?? []);
     if (mergedRoster.length && !selectedDocInternId) setSelectedDocInternId(mergedRoster[0].id);
@@ -169,19 +175,16 @@ export default function InstructorDashboard({ profile, onLogout }) {
 
   const internName = (id) => roster.find((r) => r.id === id)?.name ?? "—";
 
-  const computedScore = rubricCriteria.reduce((sum, c) => {
-    const s = rubricScores[c.id] ?? 0;
-    return sum + (s / 5) * 100 * c.weight;
-  }, 0);
-  const rubricComplete = rubricCriteria.every((c) => rubricScores[c.id] > 0);
+  const computedScore = rubricScore(rubricScores);
+  const rubricComplete = computedScore !== null;
 
-  const activeNow = roster.some((r) => r.clockedIn === null) ? "Unavailable" : roster.filter((r) => r.clockedIn).length;
-  const atRisk = roster.filter((r) => r.status === "At Risk").length;
-  const cleared = roster.filter((r) => r.cleared).length;
+  const activeNow = metricsError || roster.some((r) => r.clockedIn === null) ? "Unavailable" : roster.filter((r) => r.clockedIn).length;
+  const atRisk = metricsError || roster.some(r => r.status === "Unknown") ? "Unavailable" : roster.filter((r) => r.status === "At Risk").length;
+  const cleared = metricsError || roster.some(r => r.cleared === null) ? "Unavailable" : roster.filter((r) => r.cleared).length;
   const pendingEx = exceptions.filter((e) => e.status === "Pending").length;
 
   const statCards = [
-    { label: "Total Interns", value: `${roster.length}`, icon: <IconGradCap size={18} />, iconBg: "#eff6ff", iconColor: "#2563eb" },
+    { label: "Total Interns", value: metricsError ? "Unavailable" : `${roster.length}`, icon: <IconGradCap size={18} />, iconBg: "#eff6ff", iconColor: "#2563eb" },
     { label: "Active Now", value: `${activeNow}`, icon: <IconClock size={18} />, iconBg: "#f0fdf4", iconColor: "#16a34a" },
     { label: "At Risk", value: `${atRisk}`, icon: <IconAlertTriangle size={18} />, iconBg: "#fff1f2", iconColor: "#dc2626", warn: true },
     { label: "Cleared", value: `${cleared}`, icon: <IconCheck size={18} />, iconBg: "#fefce8", iconColor: "#d97706" },
@@ -204,29 +207,20 @@ export default function InstructorDashboard({ profile, onLogout }) {
 
   // ── Evaluation submit ──
   const submitEval = async () => {
-    if (!selectedInternId || !rubricComplete) return;
-    const score = Math.round(computedScore);
-    const { data, error } = await supabase
-      .from("evaluations")
-      .insert({
-        intern_id: selectedInternId,
-        evaluator_id: profile.id,
-        competencies: rubricScores,
-        feedback: qualFeedback,
-        overall_score: score,
-      })
-      .select()
-      .single();
-    if (error) return toast(error.message, "error");
-    setEvalRecords((prev) => [{ ...data, internName: internName(selectedInternId) }, ...prev]);
-    setRoster((prev) => prev.map((r) => (r.id === selectedInternId ? { ...r, midterm: score } : r)));
-    const name = internName(selectedInternId);
-    setSelectedInternId("");
-    setRubricScores({});
-    setQualFeedback("");
-    setShowEvalSuccess(true);
-    toast(`Evaluation for ${name} submitted`, "success");
-    setTimeout(() => setShowEvalSuccess(false), 3000);
+    if (!selectedInternId || !rubricComplete || evalInFlight.current) return;
+    evalInFlight.current = true; setEvalBusy(true);
+    const fingerprint = JSON.stringify([selectedInternId, rubricScores, qualFeedback]);
+    if (evalAttempt.current?.fingerprint !== fingerprint) evalAttempt.current = { fingerprint, id: crypto.randomUUID() };
+    try {
+      const result = await saveEvaluation(supabase, selectedInternId, rubricScores, qualFeedback, evalAttempt.current.id);
+      if (!result.ok) { toast(result.error, "error"); return result; }
+      const data = result.data;
+      setEvalRecords(prev => [{ ...data, internName: internName(selectedInternId) }, ...prev.filter(e => e.id !== data.id)]);
+      setRoster(prev => prev.map(r => r.id === selectedInternId ? { ...r, midterm: evaluationResult(data) } : r));
+      setSelectedInternId(""); setRubricScores({}); setQualFeedback(""); evalAttempt.current = null;
+      setShowEvalSuccess(true); toast("Evaluation submitted", "success");
+      setTimeout(() => setShowEvalSuccess(false), 3000); return result;
+    } finally { evalInFlight.current = false; setEvalBusy(false); }
   };
 
   // ── DTR exception review ──
@@ -265,12 +259,12 @@ export default function InstructorDashboard({ profile, onLogout }) {
   const updateDocStatus = async (doc, status, note) => {
     if (reviewBusy) return { ok: false };
     setReviewBusy(true);
-    const result = await recordRpc(supabase, "review_document", {
-      p_id: doc.id, p_status: status, p_note: note ?? null, p_expected_path: doc.file_path,
+    const result = await recordRpc(supabase, "review_document_version", {
+      p_id: doc.id, p_status: status, p_note: note ?? null, p_expected_version: doc.upload_version, p_expected_revision: doc.review_revision,
     });
     setReviewBusy(false);
     if (!result.ok) { toast(result.error, "error"); return result; }
-    setDocs((prev) => prev.map((d) => d.id === doc.id ? result.data : d));
+    setDocs((prev) => prev?.map((d) => d.id === doc.id ? result.data : d));
     const name = internName(doc.intern_id);
     if (status === "Approved") toast(`${name} — document approved`, "success");
     else if (status === "Needs Revision") toast(`Revision requested for ${name}`, "info");
@@ -304,7 +298,7 @@ export default function InstructorDashboard({ profile, onLogout }) {
   };
 
   const selectedIntern = roster.find((r) => r.id === selectedDocInternId);
-  const selectedInternDocs = docs.filter((d) => d.intern_id === selectedDocInternId);
+  const selectedInternDocs = (docs ?? []).filter((d) => d.intern_id === selectedDocInternId);
   const selectedApprovedCount = selectedInternDocs.filter((d) => d.status === "Approved").length;
   const selectedAllApproved = selectedInternDocs.length > 0 && selectedApprovedCount === selectedInternDocs.length;
 
@@ -330,6 +324,7 @@ export default function InstructorDashboard({ profile, onLogout }) {
           </span>
         </div>
 
+        {metricsError && <p role="alert" className="text-sm">Progress unavailable: {metricsError} <button onClick={loadAll} className="underline">Retry</button></p>}
         {loading && <div className="text-sm" style={{ color: "var(--muted-foreground)" }}>Loading…</div>}
 
         {/* ── OVERVIEW ── */}
@@ -373,7 +368,7 @@ export default function InstructorDashboard({ profile, onLogout }) {
                         <td className="px-4 py-3 text-xs" style={{ color: "var(--muted-foreground)" }}>{s.company}</td>
                         <td className="px-4 py-3 w-44">
                           <ProgressBar value={s.hours} max={s.required} />
-                          <div className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>{s.hours}/{s.required} hrs</div>
+                          <div className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>{displayHours(s.hours)}/{s.required ?? "Unavailable"} verified hrs</div>
                         </td>
                         <td className="px-4 py-3 font-mono text-sm">
                           {s.midterm !== null
@@ -415,9 +410,7 @@ export default function InstructorDashboard({ profile, onLogout }) {
         {!loading && tab === "progress" && (
           <div className="space-y-3">
             {roster.map((s) => {
-              const avgVelocity = 8.0;
-              const daysLeft = Math.ceil(Math.max(0, s.required - s.hours) / avgVelocity);
-              const pct = s.required > 0 ? Math.round((s.hours / s.required) * 100) : 0;
+
               return (
                 <div key={s.id} className="rounded-xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                   <div className="flex items-center justify-between mb-2">
@@ -427,15 +420,15 @@ export default function InstructorDashboard({ profile, onLogout }) {
                     </div>
                     <div className="flex items-center gap-2">
                       <StatusBadge status={s.status} />
-                      <span className="font-mono text-sm">{s.hours} <span style={{ color: "var(--muted-foreground)" }}>/ {s.required} hrs</span></span>
+                      <span className="font-mono text-sm">{displayHours(s.hours)} <span style={{ color: "var(--muted-foreground)" }}>/ {s.required} hrs</span></span>
                     </div>
                   </div>
                   <ProgressBar value={s.hours} max={s.required} />
                   <div className="flex gap-4 mt-2 text-xs" style={{ color: "var(--muted-foreground)" }}>
-                    <span>Remaining: {Math.max(0, s.required - s.hours)} hrs</span>
-                    <span>Velocity: ~{avgVelocity} hrs/day</span>
-                    <span style={{ color: s.status === "At Risk" ? "var(--danger)" : "var(--muted-foreground)" }}>Est. finish: ~{daysLeft} working days</span>
-                    {pct >= 100 && <span style={{ color: "var(--success)" }}>Clearance eligible</span>}
+                    <span>Remaining: {displayHours(s.remaining)} verified hrs</span>
+                    <span>Logged: {displayHours(s.logged)} hrs</span>
+                    {s.cleared && <span style={{ color: "var(--success)" }}>Clearance eligible</span>}
+
                   </div>
                 </div>
               );
@@ -451,10 +444,10 @@ export default function InstructorDashboard({ profile, onLogout }) {
                 <h2 className="text-sm font-semibold mb-3">New Evaluation</h2>
                 <div className="mb-4">
                   <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--foreground)" }}>Select Intern</label>
-                  <select value={selectedInternId} onChange={(e) => { setSelectedInternId(e.target.value); setRubricScores({}); setQualFeedback(""); }}
+                  <select disabled={evalBusy} value={selectedInternId} onChange={(e) => { setSelectedInternId(e.target.value); setRubricScores({}); setQualFeedback(""); }}
                     className={inputCls} style={inputStyle}>
                     <option value="">— Choose intern —</option>
-                    {roster.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                    {roster.filter(r => r.accountStatus === "Active").map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
                   </select>
                 </div>
 
@@ -464,14 +457,14 @@ export default function InstructorDashboard({ profile, onLogout }) {
                       <div className="flex items-center justify-between mb-1.5">
                         <span className="text-xs font-medium" style={{ color: "var(--foreground)" }}>{c.label}</span>
                         <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>
-                          Weight: {c.weight * 100}%{" "}
+                          Weight: {c.weight}%{" "}
                           {rubricScores[c.id] ? <span style={{ color: "var(--primary)", fontWeight: 600 }}>{scaleLabels[rubricScores[c.id]]}</span> : ""}
                         </span>
                       </div>
                       <div className="flex gap-2">
                         {[1, 2, 3, 4, 5].map((n) => (
                           <button key={n} onClick={() => selectedInternId && setRubricScores((s) => ({ ...s, [c.id]: n }))}
-                            disabled={!selectedInternId}
+                            disabled={evalBusy || !selectedInternId}
                             className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-30"
                             style={{ background: rubricScores[c.id] === n ? "var(--primary)" : "var(--secondary)", color: rubricScores[c.id] === n ? "#fff" : "var(--muted-foreground)" }}>
                             {n}
@@ -491,21 +484,21 @@ export default function InstructorDashboard({ profile, onLogout }) {
 
                 <div className="mt-4">
                   <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--foreground)" }}>Feedback & Guidance</label>
-                  <textarea rows={3} value={qualFeedback} onChange={(e) => setQualFeedback(e.target.value)}
+                  <textarea rows={3} maxLength={500} disabled={evalBusy} value={qualFeedback} onChange={(e) => setQualFeedback(e.target.value)}
                     placeholder="Specific feedback, constructive guidance, areas for improvement..."
                     className="w-full text-sm py-2 px-3 rounded-lg border outline-none resize-none"
-                    style={inputStyle} disabled={!selectedInternId} />
+                    style={inputStyle} />
                 </div>
 
                 <div className="flex justify-end mt-3 gap-2">
                   {showEvalSuccess && (
                     <span className="text-xs flex items-center gap-1" style={{ color: "var(--success)" }}><IconCheck size={12} /> Saved</span>
                   )}
-                  <button onClick={() => { setSelectedInternId(""); setRubricScores({}); setQualFeedback(""); }}
+                  <button disabled={evalBusy} onClick={() => { setSelectedInternId(""); setRubricScores({}); setQualFeedback(""); }}
                     className="text-sm px-3 py-2 rounded-lg" style={{ background: "var(--secondary)", color: "var(--foreground)" }}>
                     Clear
                   </button>
-                  <button onClick={submitEval} disabled={!selectedInternId || !rubricComplete}
+                  <button onClick={submitEval} disabled={evalBusy || !selectedInternId || !rubricComplete}
                     className="text-sm px-4 py-2 rounded-lg font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
                     style={{ background: "var(--primary)", color: "#fff" }}>
                     Submit Evaluation
@@ -532,17 +525,10 @@ export default function InstructorDashboard({ profile, onLogout }) {
                           </div>
                         </div>
                         <div className="text-right">
-                          <div className="text-xl font-bold" style={{ color: "var(--primary)" }}>{Number(ev.overall_score).toFixed(0)}<span className="text-xs font-normal" style={{ color: "var(--muted-foreground)" }}>/100</span></div>
+                          <div className="text-xl font-bold" style={{ color: "var(--primary)" }}>{evaluationResult(ev) ?? "Unavailable"}<span className="text-xs font-normal" style={{ color: "var(--muted-foreground)" }}>/100</span></div>
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 mb-2">
-                        {rubricCriteria.map((c) => (
-                          <div key={c.id} className="flex items-center justify-between text-xs">
-                            <span style={{ color: "var(--muted-foreground)" }}>{c.label.split(" ")[0]}</span>
-                            <span className="font-semibold" style={{ color: "var(--foreground)" }}>{ev.competencies?.[c.id] ?? "—"}/5</span>
-                          </div>
-                        ))}
-                      </div>
+                      <EvaluationCriteria criteria={ev.competencies} />
                       {ev.feedback && <p className="text-xs italic" style={{ color: "var(--muted-foreground)" }}>"{ev.feedback}"</p>}
                     </div>
                   ))}
@@ -653,7 +639,7 @@ export default function InstructorDashboard({ profile, onLogout }) {
           <>
             <div className="flex items-center gap-3 flex-wrap">
               {roster.map((r) => {
-                const rDocs = docs.filter((d) => d.intern_id === r.id);
+                const rDocs = (docs ?? []).filter((d) => d.intern_id === r.id);
                 const rApproved = rDocs.filter((d) => d.status === "Approved").length;
                 const rPending = rDocs.filter((d) => d.status === "Pending").length;
                 const rRevision = rDocs.filter((d) => d.status === "Needs Revision").length;
@@ -681,7 +667,7 @@ export default function InstructorDashboard({ profile, onLogout }) {
                     <h2 className="text-base font-bold">{selectedIntern.name}</h2>
                     <p className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>
                       {selectedIntern.company} · {selectedApprovedCount}/{selectedInternDocs.length} documents approved
-                      {selectedAllApproved && <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-medium" style={{ background: "var(--success-bg)", color: "var(--success)" }}>Clearance Eligible</span>}
+                      {selectedIntern.cleared && <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-medium" style={{ background: "var(--success-bg)", color: "var(--success)" }}>Clearance Eligible</span>}
                     </p>
                   </div>
                   {selectedInternDocs.length > 0 && (
@@ -691,7 +677,7 @@ export default function InstructorDashboard({ profile, onLogout }) {
                   )}
                 </div>
 
-                {selectedInternDocs.length === 0 ? (
+                {docs === null ? <p role="alert">Document requirements unavailable. <button onClick={loadAll} className="underline">Retry</button></p> : selectedInternDocs.length === 0 ? (
                   <div className="rounded-xl p-6 text-center text-sm" style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--muted-foreground)" }}>
                     No document requirements set up for this intern yet.
                   </div>
@@ -719,22 +705,23 @@ export default function InstructorDashboard({ profile, onLogout }) {
                                 : <div className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>No file uploaded yet</div>}
                               {doc.note && (
                                 <div className="text-xs mt-1.5 px-2.5 py-1.5 rounded-lg" style={{ background: "var(--danger-bg)", color: "var(--danger)" }}>
-                                  <strong>Revision note:</strong> {doc.note}
+                                  <strong>Review note:</strong> {doc.note}
                                 </div>
                               )}
                             </div>
+                            <DocumentActions doc={doc} />
                             <div className="flex items-center gap-2 shrink-0">
-                              {doc.status !== "Approved" && doc.file_name && (
-                                <button onClick={() => updateDocStatus(doc, "Approved")} className="text-xs px-3 py-1.5 rounded-lg font-semibold" style={{ background: "var(--success-bg)", color: "var(--success)" }}>
+                              {doc.status === "Pending" && doc.upload_version > 0 && doc.file_name && (
+                                <button disabled={reviewBusy} onClick={() => updateDocStatus(doc, "Approved")} className="text-xs px-3 py-1.5 rounded-lg font-semibold" style={{ background: "var(--success-bg)", color: "var(--success)" }}>
                                   Approve
                                 </button>
                               )}
                               {doc.status === "Approved" && (
-                                <button onClick={() => updateDocStatus(doc, "Pending")} className="text-xs px-3 py-1.5 rounded-lg" style={{ background: "var(--secondary)", color: "var(--muted-foreground)" }}>
+                                <button disabled={reviewBusy} onClick={() => updateDocStatus(doc, "Pending")} className="text-xs px-3 py-1.5 rounded-lg" style={{ background: "var(--secondary)", color: "var(--muted-foreground)" }}>
                                   Revoke
                                 </button>
                               )}
-                              {doc.status !== "Needs Revision" && (
+                              {doc.status === "Pending" && doc.upload_version > 0 && (
                                 <button onClick={() => setShowRevisionInput(isShowingRevInput ? null : doc.id)}
                                   className="text-xs px-3 py-1.5 rounded-lg font-semibold"
                                   style={{ background: isShowingRevInput ? "var(--danger)" : "var(--danger-bg)", color: isShowingRevInput ? "#fff" : "var(--danger)" }}>
@@ -746,7 +733,7 @@ export default function InstructorDashboard({ profile, onLogout }) {
 
                           {isShowingRevInput && (
                             <div className="mt-3 flex gap-2">
-                              <input type="text" value={revisionNoteForm[doc.id] ?? ""} onChange={(e) => setRevisionNoteForm((f) => ({ ...f, [doc.id]: e.target.value }))}
+                              <input type="text" maxLength={500} value={revisionNoteForm[doc.id] ?? ""} onChange={(e) => setRevisionNoteForm((f) => ({ ...f, [doc.id]: e.target.value }))}
                                 placeholder="Describe what needs to be corrected..."
                                 className="flex-1 text-sm py-1.5 px-3 rounded-lg border outline-none"
                                 style={{ borderColor: "var(--danger)", background: "var(--card)", color: "var(--foreground)" }} />

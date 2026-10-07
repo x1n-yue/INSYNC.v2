@@ -50,8 +50,25 @@ legacy bootstrap alone is insufficient. No live bootstrap/seed is automated.
 Public registration always requests intern and creates intern/Pending. Pending
 users can authenticate but have only own status access. Trusted first-Admin
 bootstrap uses an Auth-verified UUID and controlled operator SQL described in the
-runbook. Effective staff roles require Active Admin approval. Account lifecycle,
-required-hours, evaluation and document-version improvements remain Phase 4.
+runbook. Effective staff roles require Active Admin approval. Phase 4 adds atomic
+account/assignment operations, validated hour targets, server-scored evaluations
+and versioned document operations; deploy M06-M08 before this client. M09 is a
+separate historical-validation gate, never a legacy-data repair.
+
+All three dashboards use the same logged/verified hours, target, risk and clearance
+rules. Clearance eligibility requires verified hours meeting the persisted target,
+all four standard requirement types and approval of every current requirement.
+Invalid or unavailable evidence yields unknown eligibility. Calendar periods use
+Asia/Manila; charts show sums and retain the year. No certificate is issued.
+
+Uploads reserve server-generated paths for PDF/JPEG/PNG up to 10 MiB. Replacement
+retains committed evidence and review history, resets current review, and checks
+the expected upload/review versions. Failed or ambiguous responses are reconciled
+before cleanup through the Storage API. Owners can retry unfinished-upload cleanup.
+Legacy files remain readable but require resubmission before new approval/clearance.
+View/Download prepares a signed link lasting 60 seconds; actual provider delivery
+and deletion of file bytes still require disposable live verification. Interns
+receive UUID-addressed personal and roster announcements with explicit feed states.
 
 ## Downloads and unavailable features
 
@@ -88,7 +105,7 @@ npm audit --ignore-scripts
 
 Tests use synthetic transports, PGlite and fresh loopback-only native Postgres;
 no external database URL or real Auth/Storage endpoint is accepted. See tests/README.md
-and supabase/tests/PHASE3.md for verification and limits. CI is authored here; its
+and supabase/tests/PHASE3.md and PHASE4.md for verification and limits. CI is authored here; its
 remote execution is not claimed. Build success is compilation, not policy proof.
 
 Set public environment values in the deployment build environment, run npm ci

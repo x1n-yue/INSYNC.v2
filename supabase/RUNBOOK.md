@@ -1,7 +1,7 @@
 # Nondestructive remediation runbook
 
-Phases 0-2, 2026-10-07. **M01-M05 authored and rehearsed only in fresh synthetic
-in-memory/native Postgres; no real-project migration applied.** Later phases pending.
+Phases 0-4, 2026-10-07. **M01-M09 authored and rehearsed only in fresh synthetic
+in-memory/native Postgres; no real-project migration applied.** Phases 5-6 pending.
 This session will not execute SQL against a real project. Every future rollout
 requires operator review of prerequisites, anomaly disposition and live checks.
 
@@ -138,10 +138,10 @@ Never disable required audit, weaken RLS, remove uniqueness to admit duplicates,
 or reopen public Storage to restore a UI flow. Use provider restore only on
 disposable rehearsal data with explicit counts/evidence verification.
 
-Limits: no real bucket/JWT/API/SDK race tests ran here; native tests use synthetic
-auth.uid()/Storage metadata, not Supabase services. Signed URL UI still Phase 4.
-Audit pagination/read outages, Admin lifecycle atomicity and other zero-row
-handlers remain later phases. Legacy authorized staff provenance cannot be proven
+Limits at Phase 2: no real bucket/JWT/API/SDK race tests ran here; native tests use
+synthetic auth.uid()/Storage metadata, not Supabase services. Phase 4 below adds
+signed-link UI and atomic Admin lifecycle operations. Audit pagination/read outages
+and remaining zero-row handlers stay Phase 5. Legacy staff provenance cannot be proven
 from stored role/status or a new audit source. Existing public URL consumers may
 lose access after M04; test authorized access rather than preserving public URLs.
 
@@ -169,3 +169,75 @@ Rollback the client with a compatible reviewed build while retaining M01-M05
 authorization and private Storage. Never restore legacy permissive policies to
 support an older UI. Retain the tested lockfile/Node floor and review advisories
 before any dependency rollback.
+
+## Phase 4 domain and document deployment gates
+
+1. Review D02/D04-D13/D32-D35 in DECISIONS.md. Capture private catalog, row counts
+   and object inventory. Run `inspection/04_phase4_domain.sql` read-only after the
+   earlier migrations, plus the existing metadata/anomaly queries. Review
+   `inspection/PHASE4_REPAIR_PROPOSAL.md` per identity. No supplied migration
+   deletes, deduplicates, rounds targets, invents rubric criteria or approves old
+   evidence. All legacy changes require a separately reviewed versioned proposal.
+2. Rehearse `M06_rubric_hours.sql` after M01-M04. M05 can remain deferred.
+   Check `m06_required_hours` and `m06_evaluation_rubric` are initially NOT VALID,
+   the partial retry index exists, raw evaluation writes are revoked, and RPC
+   ownership/search_path/EXECUTE match the catalog queries. The CHECKs apply to
+   new/updated rows even while historical validation is deferred. Run M06's exact
+   read-only rubric anomaly query; broad preflight candidates are not proof of
+   valid historical criteria or authorized evaluator provenance.
+3. Before `M07_account_lifecycle.sql`, resolve reviewed missing intern extensions
+   and incompatible references separately. The migration aborts unchanged on
+   these anomalies. Verify deferred relationship triggers and profile full_name
+   only/raw intern write revocations. Test explicit unassignment before promoting
+   an intern or demoting/deactivating a referenced instructor. Company/section/
+   target/history remain retained, with no implicit reassignment. Fail audit and
+   FK writes to verify the entire operation rolls back.
+4. Before `M08_document_versions.sql`, stop on duplicate `(intern_id,doc_type)`;
+   review each group's evidence without choosing a canonical row automatically.
+   Verify exact private bucket limits and actual `storage.objects.metadata` size/
+   mimetype contract using disposable provider uploads. Inventory ALL Storage
+   policies and privileges: M08 grants authenticated DELETE on the Storage table
+   for receipt-scoped API cleanup; an existing unrelated-bucket permissive policy
+   could become effective after that grant. Review those buckets explicitly.
+   Do not weaken document restrictions to accommodate provider/API differences.
+5. Apply M08 once. Check unique requirement identity, two new RLS tables, no raw
+   version/event writes, fixed-path RPC grants and mandatory audit triggers.
+   Check legacy document paths/statuses/counts unchanged and version=0; no versions
+   or approval events are synthesized for them. New review/clearance requires
+   explicit resubmission. Confirm old path-only upload/review RPC execution is
+   revoked, and restrictive Storage guards prevent anonymous access, arbitrary
+   insertion, all document overwrites and deletion of committed evidence.
+6. **Independent deferred gate:** apply `M09_validate_domain.sql` only after M06-M08
+   and separately reviewed clean historical targets/rubrics. It validates the two
+   CHECKs and sets evaluation score NOT NULL. A failure rolls back this file,
+   preserves data and M06 new-write enforcement; record the gate as pending.
+   M05 attendance and M09 domain validation can be resolved independently. Never
+   edit either file to coerce or remove offending historical rows.
+7. Coordinate the client refresh after M06-M08. All dashboards require shared
+   target/metrics rules; evaluations require a submission UUID; uploads require a
+   server reservation, finalize, expected-version review and access RPCs. An older
+   client receives denied raw/path-only writes. Follow `tests/PHASE4.md` on an
+   explicitly disposable Supabase project: PostgREST shapes, retained tokens,
+   MIME/size enforcement, physical file cleanup, private/signed delivery, expired
+   links, concurrent replacement/review and account change races. Reconcile domain,
+   evidence and trusted audit counts, including injected failures.
+
+Rollback: any transaction error requires ROLLBACK; no partial file should commit.
+After commit disable affected flows and use a reviewed forward migration. Preserve
+original files, committed versions, review events, retry identities and audit.
+Do not drop the new evidence tables, restore raw evaluation/profile/assignment
+writes, re-enable old upload/review RPCs, remove receipt restrictions, or publish
+the bucket. Failed finalization must be reconciled before cleanup; a lost response
+may represent a committed upload. Use the Storage API for confirmed abandoned
+receipts, never provider-metadata DELETE SQL. Legacy orphan disposition is separate.
+
+Limits: native SQL tests model Storage metadata, not provider file bytes or HTTP.
+MIME/size validation does not inspect file contents or provide malware scanning.
+Signed links are bearer links usable until expiry (60 seconds), including after
+subsequent access changes; issuing them is RLS-scoped, immediate revocation is not
+claimed. Phase 4 operations use a conservative global advisory lock; measure
+contention before rollout. Count-checked reads have a 50,000-row bound and cannot
+detect every equal-count concurrent edit. Metrics are calculated on loaded data;
+focus/midnight refresh, server aggregates and paginated detail remain Phase 5.
+Browser/mobile/screen-reader checks remain unexecuted. No certification or
+production readiness is asserted.

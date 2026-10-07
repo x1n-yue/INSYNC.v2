@@ -1,6 +1,6 @@
 # Remediation decisions
 
-Phases 0-3, 2026-10-07. These are conservative **assumed defaults**, not confirmed
+Phases 0-4, 2026-10-07. These are conservative **assumed defaults**, not confirmed
 institutional policy. Ambiguous behavior is paused at this decision record before
 implementation; work continues using these defaults as requested. Phase 1 implements
 the authority subset and its controlled-operation prerequisites. Update the relevant decision, shared module, migration,
@@ -40,6 +40,10 @@ new rule retroactively by silently rewriting legacy data.
 | D29 | DTR export is all authorized own attendance, CSV, informational/unofficial, independent of dashboard period filters. Audit export is all authorized audit rows through an upper-bound record ID, with legacy provenance labeled unverified. | Bound each export at 50,000 records; paginate by immutable UUID to avoid API row-cap/offset truncation; verify exact counts, ordered unique IDs and final count. Fail without a download on missing/error/changing counts; no invented totals. This is not a transactional database snapshot; simultaneous equal-count edits may still occur. Full snapshot/aggregates stay Phase 5 (INS-023/027). |
 | D30 | DTR exports distinguish trusted valid logged duration, verified evidence, open, and legacy/invalid unknown. Legacy/missing/inconsistent instants/hours never become certified totals; raw stored hours retained in a separate column. CSV formula-like text is escaped as literal text. | Preserve original evidence in DB. No clearance/certificate issuance inferred from export or current UI eligibility. Certificate, instructor reports and other intern summaries/archives remain disabled until implemented (INS-023/025). |
 | D31 | Demo shortcuts require VITE_DEMO_MODE=true AND a development build; production builds never include the known demo password/accounts, even if the flag is accidentally true. | Separate disposable demo project only. No real-account login/inventory/rotation in this session; operator must rotate any real account that reused the public password (INS-038). |
+| D32 | Changing an intern to a staff role requires explicit unassignment first. Retain their extension, company/section/target and all historical records; do not automatically erase or move relationships. All instructor demotion/deactivation is blocked while any intern extension references them. | Lifecycle and assignment RPCs serialize, revalidate Active Admin and references, and commit profile/extension/audit atomically. Direct protected profile and intern configuration writes are revoked. Existing bad relationships require reviewed repair, not automatic normalization (INS-019). |
+| D33 | Upload reservation lasts 15 minutes. Server generates owner-UUID/random-UUID.extension, from PDF/JPEG/PNG MIME; original name is metadata. Finalize requires expected document version and exact stored MIME/size. | Committed versions and review events are retained. Only the active owner may remove an abandoned/uncommitted reserved object through Storage API, never SQL metadata deletion or a global delete policy. Ambiguous finalize responses are reconciled before cleanup; if reconciliation fails preserve evidence and show cleanup pending (INS-022). |
+| D34 | Approve or request revision only on Pending current-version evidence; revoke only Approved to Pending. Every transition checks upload version AND review revision. Legacy version-zero evidence is readable but requires explicit resubmission before new approval/clearance. | No legacy approval backfill or inferred version. Review note required for Needs Revision, optional for approval/revoke, <=500 characters; every decision saved in append-only history with reviewer/server time. Replacement resets current note/reviewer, preserves prior version and events (INS-021/022/025). |
+| D35 | Unknown/invalid/capped prerequisite data yields unknown progress/clearance, never invented zero. Without a last valid attendance date or a revision requirement, risk is Unknown because no placement start date exists. | Current week/month/year are Manila calendar periods; charts show sums and retain year in group keys. Full reads are bounded at 50,000 with count checks until Phase 5 server aggregates; detected truncation is an error. Equal-count concurrent edits remain a documented snapshot limitation (INS-025/027). |
 
 Historical Phase 0 tooling choice: standalone Node Vitest configuration kept application build,
 runtime, dev host and source behavior unchanged. Use patched Vitest 4.1.11 instead
@@ -69,3 +73,10 @@ Native concurrency is observed via pg_stat_activity advisory-lock waits before
 releasing contenders. This is local DB evidence, not deployed Supabase API proof.
 
 Phase 3 aligns engines at >=22.12.0, .nvmrc/CI Node 22 and 24; upgrades application Vite to 7.3.7, React plugin 5.2.0, esbuild 0.28.2, source-map-js 1.2.2. ESLint 9 remains a documented unsupported-major notice because the React plugin does not declare ESLint 10 compatibility. No forced dependency fix.
+
+Phase 4 implements D32 and supersedes the direct protected profile-management
+portion of historical D23: Active basic full_name writes remain whitelisted;
+effective role/status/company/assignment changes use the atomic M07 RPCs. M06-M08
+use a conservative global transaction advisory lock for cross-workflow invariants;
+measure contention before deployment rather than claiming concurrent throughput.
+M09 historical validation is independent of M05 and may remain deferred.

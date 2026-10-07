@@ -2,18 +2,8 @@ import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
 import { manilaDate } from "../src/lib/authority";
-import { formatBusinessDate } from "../src/lib/attendance";
 
 const source = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
-const admin = source("src/components/AdminDashboard.jsx");
-const intern = source("src/components/InternDashboard.jsx");
-
-function between(text, start, end) {
-  const from = text.indexOf(start);
-  const to = text.indexOf(end, from + start.length);
-  if (from < 0 || to < 0) throw new Error(`Source probe boundary missing: ${start}`);
-  return text.slice(from, to);
-}
 
 // Remaining characterization cases assert audited defects. The owner date check
 // now asserts corrected behavior; server interval tests live in the SQL suite.
@@ -37,36 +27,6 @@ describe("audit baseline characterization (known defects, not remediation)", () 
   // INS-016's extracted computeHours probe is replaced by actual Postgres
   // correction_instants/review tests in m01-authority.test.js. No client clamp.
 
-  it.each([["0", 486], ["", 486], ["abc", 486], ["-1", -1], ["1.5", 1.5]])(
-    "INS-018: required_hours %j is coerced to %s", (value, saved) => {
-      const expression = admin.match(/required_hours: (Number\(form\.required_hours\)[^,\n]+)/)?.[1];
-      expect(expression).toBeTruthy();
-      expect(new Function("form", `return ${expression};`)({ required_hours: value })).toBe(saved);
-    },
-  );
-
-  it("INS-039: zero-row assignment write still changes local state and claims success", async () => {
-    const persisted = { id: "synthetic-intern", required_hours: 486 };
-    let localRows = [{ ...persisted }];
-    const toast = vi.fn();
-    const refreshAudit = vi.fn();
-    const update = vi.fn(() => ({ eq: vi.fn(async () => ({ error: null, data: [], count: 0 })) }));
-    const declaration = between(admin, "  const saveInternAssignment =", "  const attachStandardDocs =");
-    const save = new Function("supabase", "internForms", "setSavingInternId", "setInternRows", "internsForTab", "refreshAudit", "toast",
-      `${declaration}; return saveInternAssignment;`)(
-      { from: () => ({ update }) },
-      { [persisted.id]: { required_hours: "100", company_id: "", instructor_id: "" } },
-      vi.fn(), (apply) => { localRows = apply(localRows); },
-      [{ id: persisted.id, full_name: "Synthetic Intern" }], refreshAudit, toast,
-    );
-    await save(persisted.id);
-    expect(persisted.required_hours).toBe(486);
-    expect(localRows[0].required_hours).toBe(100);
-    expect(toast).toHaveBeenCalledWith("Synthetic Intern updated");
-    expect(refreshAudit).toHaveBeenCalledOnce();
-    expect(admin).not.toContain("addLog"); // No fake audit on the remaining zero-row defect.
-  });
-
   it("INS-011: maybeSingle detects duplicate response after sending the PATCH", async () => {
     const transport = vi.fn(async () => new Response(JSON.stringify([{ id: "one" }, { id: "two" }]), {
       status: 200, headers: { "Content-Type": "application/json" },
@@ -81,18 +41,6 @@ describe("audit baseline characterization (known defects, not remediation)", () 
     expect(transport.mock.calls[0][1].method).toBe("PATCH");
     expect(result.error?.code).toBe("PGRST116");
     expect(result.data).toBeNull();
-  });
-
-  it("INS-025: chart merges October across years and averages daily hours", () => {
-    const declaration = between(intern, "    const withHours =", "  }, [dtr]);");
-    const derive = new Function("dtr", "formatBusinessDate", declaration);
-    const result = derive([
-      { log_date: "2025-10-07", hours: 8 },
-      { log_date: "2026-10-07", hours: 4 },
-      { log_date: "2026-10-08", hours: 8 },
-    ], formatBusinessDate);
-    expect(result.Monthly).toEqual([{ day: "Oct", hours: 6.7 }]);
-    expect(result["All Time"]).toEqual(result.Monthly);
   });
 
   it("INS-034: current success/warning token pairs fail small-text contrast", () => {

@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import { auditArtifact, downloadArtifact, templateArtifact } from "../lib/exports";
+import { recordRpc } from "../lib/authority";
+import { checklistState } from "../lib/business";
+import { displayHours, internMetrics } from "../lib/metrics";
+import { completeRows, saveAssignment } from "../lib/workflows";
 import Shell from "./Shell";
 import Modal from "./Modal";
 import { useToast } from "./Toast";
@@ -17,13 +21,6 @@ const navItems = [
   { id: "import", label: "Bulk Import", icon: <IconUpload size={15} /> },
   { id: "auditlogs", label: "Audit Logs", icon: <IconClipboard size={15} /> },
   { id: "backup", label: "Backup & Security", icon: <IconShield size={15} /> },
-];
-
-const standardDocChecklist = [
-  { doc_type: "moa", name: "Memorandum of Agreement (MOA)" },
-  { doc_type: "endorsement", name: "Endorsement Letter" },
-  { doc_type: "consent", name: "Parent / Guardian Consent Form" },
-  { doc_type: "medical", name: "Medical Certificate" },
 ];
 
 const roleLabel = { admin: "Admin", instructor: "Instructor", intern: "Intern" };
@@ -65,6 +62,10 @@ export default function AdminDashboard({ profile, onLogout }) {
   const [internRows, setInternRows] = useState([]);
   const [internForms, setInternForms] = useState({});
   const [docCounts, setDocCounts] = useState({});
+  const [metricAttendance, setMetricAttendance] = useState(null);
+  const [metricDocuments, setMetricDocuments] = useState(null);
+  const [metricsError, setMetricsError] = useState(null);
+  const [accountBusy, setAccountBusy] = useState(false);
   const [savingInternId, setSavingInternId] = useState(null);
   const [attachingDocsId, setAttachingDocsId] = useState(null);
 
@@ -86,21 +87,23 @@ export default function AdminDashboard({ profile, onLogout }) {
   const loadAll = async () => {
     setLoading(true);
     const [
-      { data: profiles },
+      { data: profiles, error: profilesError },
       { data: auditRows, error: auditError },
       { data: companyRows },
       { data: sectionRows },
       { data: yearRows },
-      { data: internTableRows },
-      { data: docRows },
+      { data: internTableRows, error: internsError },
+      { data: docRows, error: docError },
+      { data: attendanceRows, error: attendanceError },
     ] = await Promise.all([
-      supabase.from("profiles").select("*").order("created_at", { ascending: false }),
+      completeRows(supabase, "profiles").then(data => ({ data })).catch(error => ({ data: null, error })),
       supabase.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(50),
       supabase.from("companies").select("*").order("name"),
       supabase.from("course_sections").select("*").order("name"),
       supabase.from("academic_years").select("*").order("label", { ascending: false }),
-      supabase.from("interns").select("*"),
-      supabase.from("documents").select("intern_id"),
+      completeRows(supabase, "interns").then(data => ({ data })).catch(error => ({ data: null, error })),
+      completeRows(supabase, "documents").then(data => ({ data })).catch(error => ({ data: null, error })),
+      completeRows(supabase, "attendance_logs").then(data => ({ data })).catch(error => ({ data: null, error })),
     ]);
     setUsers(profiles ?? []);
     if (auditError) toast(`Unable to load audit history: ${auditError.message}`, "error");
@@ -113,12 +116,14 @@ export default function AdminDashboard({ profile, onLogout }) {
       Object.fromEntries(
         (internTableRows ?? []).map((r) => [
           r.id,
-          { instructor_id: r.instructor_id ?? "", company_id: r.company_id ?? "", required_hours: r.required_hours ?? 486 },
+          { instructor_id: r.instructor_id ?? "", company_id: r.company_id ?? "", section_id: r.section_id ?? "", required_hours: r.required_hours ?? "" },
         ])
       )
     );
+    setMetricAttendance(attendanceRows); setMetricDocuments(docRows);
+    setMetricsError(profilesError?.message || internsError?.message || docError?.message || attendanceError?.message || null);
     const counts = {};
-    (docRows ?? []).forEach((d) => { counts[d.intern_id] = (counts[d.intern_id] ?? 0) + 1; });
+    (internTableRows ?? []).forEach(r => { counts[r.id] = checklistState(docRows?.filter(d => d.intern_id === r.id)); });
     setDocCounts(counts);
     setLoading(false);
   };
@@ -139,7 +144,7 @@ export default function AdminDashboard({ profile, onLogout }) {
   // Only people whose CURRENT role is "intern" belong here — a leftover
   // `interns` row from before a role change should not make someone with
   // the Instructor or Admin role show up in this list.
-  const instructorOptions = users.filter((u) => u.role === "instructor");
+  const instructorOptions = users.filter((u) => u.role === "instructor" && u.status === "Active");
   const internsForTab = internRows
     .map((r) => {
       const p = users.find((u) => u.id === r.id);
@@ -151,44 +156,32 @@ export default function AdminDashboard({ profile, onLogout }) {
   const updateInternForm = (internId, field, value) =>
     setInternForms((prev) => ({ ...prev, [internId]: { ...prev[internId], [field]: value } }));
 
-  const saveInternAssignment = async (internId) => {
-    const form = internForms[internId];
-    if (!form) return;
-    setSavingInternId(internId);
-    const { error } = await supabase
-      .from("interns")
-      .update({
-        instructor_id: form.instructor_id || null,
-        company_id: form.company_id || null,
-        required_hours: Number(form.required_hours) || 486,
-      })
-      .eq("id", internId);
-    setSavingInternId(null);
-    if (error) return toast(error.message, "error");
-    setInternRows((prev) =>
-      prev.map((r) =>
-        r.id === internId
-          ? { ...r, instructor_id: form.instructor_id || null, company_id: form.company_id || null, required_hours: Number(form.required_hours) || 486 }
-          : r
-      )
-    );
-    const internName = internsForTab.find((i) => i.id === internId)?.full_name ?? "Intern";
-    await refreshAudit();
-    toast(`${internName} updated`);
+  const applyIntern = (row) => {
+    if (!row) return;
+    setInternRows(prev => prev.some(r => r.id === row.id) ? prev.map(r => r.id === row.id ? row : r) : [...prev, row]);
+    setInternForms(prev => ({ ...prev, [row.id]: { instructor_id: row.instructor_id ?? "", company_id: row.company_id ?? "", section_id: row.section_id ?? "", required_hours: row.required_hours ?? "" } }));
   };
-
+  const saveInternAssignment = async (internId) => {
+    if (savingInternId || !internForms[internId]) return;
+    setSavingInternId(internId);
+    try {
+      const result = await saveAssignment(supabase, internId, internForms[internId]);
+      if (!result.ok) { toast(result.error, "error"); return result; }
+      applyIntern(result.data);
+      await refreshAudit(); toast("Assignment saved", "success");
+      return result;
+    } finally { setSavingInternId(null); }
+  };
   const attachStandardDocs = async (internId) => {
-    if (docCounts[internId] > 0) return;
+    if (attachingDocsId) return;
     setAttachingDocsId(internId);
-    const { error } = await supabase
-      .from("documents")
-      .insert(standardDocChecklist.map((d) => ({ intern_id: internId, doc_type: d.doc_type, name: d.name })));
-    setAttachingDocsId(null);
-    if (error) return toast(error.message, "error");
-    setDocCounts((prev) => ({ ...prev, [internId]: standardDocChecklist.length }));
-    const internName = internsForTab.find((i) => i.id === internId)?.full_name ?? "Intern";
-    await refreshAudit();
-    toast(`Document checklist attached for ${internName}`);
+    try {
+      const result = await recordRpc(supabase, "attach_standard_docs", { p_id: internId });
+      if (!result.ok) return toast(result.error, "error");
+      setDocCounts(prev => ({ ...prev, [internId]: checklistState(result.data.documents) }));
+      setMetricDocuments(prev => prev ? [...prev.filter(d => d.intern_id !== internId), ...result.data.documents] : null);
+      await refreshAudit(); toast("Missing standard requirements attached", "success");
+    } finally { setAttachingDocsId(null); }
   };
 
   const refreshAudit = async () => {
@@ -212,73 +205,32 @@ export default function AdminDashboard({ profile, onLogout }) {
     });
     setUserModal({ open: true, editing: u });
   };
+  const applyAccount = (data) => {
+    setUsers(prev => prev.map(u => u.id === data.id ? data.profile : u));
+    applyIntern(data.intern);
+  };
   const saveUser = async () => {
-    if (!userModal.editing) return;
-    const newRole = userForm.role.toLowerCase();
-    const { error } = await supabase
-      .from("profiles")
-      .update({ full_name: userForm.name, role: newRole, status: userForm.status })
-      .eq("id", userModal.editing.id);
-    if (error) {
-      toast(error.message, "error");
-      return;
-    }
-    setUsers((prev) =>
-      prev.map((u) => (u.id === userModal.editing.id ? { ...u, full_name: userForm.name, role: newRole, status: userForm.status } : u))
-    );
-
-    // Someone made an Intern via Account Management (rather than by
-    // registering as one) won't have an `interns` row yet — the signup
-    // trigger only creates that at registration time. Add it now (with
-    // whatever company was chosen) so they show up on the Interns tab
-    // immediately. If they already had an `interns` row, just update its
-    // company to match what was picked here.
-    if (newRole === "intern") {
-      const existingRow = internRows.find((r) => r.id === userModal.editing.id);
-      const companyId = userForm.companyId || null;
-      if (!existingRow) {
-        const { data: newInternRow, error: internError } = await supabase
-          .from("interns")
-          .insert({ id: userModal.editing.id, company_id: companyId })
-          .select()
-          .single();
-        if (internError) {
-          toast(`Role updated, but couldn't create the intern record: ${internError.message}`, "error");
-        } else if (newInternRow) {
-          setInternRows((prev) => [...prev, newInternRow]);
-          setInternForms((prev) => ({
-            ...prev,
-            [newInternRow.id]: { instructor_id: "", company_id: companyId ?? "", required_hours: newInternRow.required_hours ?? 486 },
-          }));
-        }
-      } else if (existingRow.company_id !== companyId) {
-        const { error: companyError } = await supabase.from("interns").update({ company_id: companyId }).eq("id", userModal.editing.id);
-        if (companyError) {
-          toast(`Role updated, but couldn't update company: ${companyError.message}`, "error");
-        } else {
-          setInternRows((prev) => prev.map((r) => (r.id === userModal.editing.id ? { ...r, company_id: companyId } : r)));
-          setInternForms((prev) => ({
-            ...prev,
-            [userModal.editing.id]: { ...prev[userModal.editing.id], company_id: companyId ?? "" },
-          }));
-        }
-      }
-    }
-
-    await refreshAudit();
-    toast(`${userForm.name} updated`);
-    setUserModal({ open: false, editing: null });
+    if (!userModal.editing || accountBusy) return;
+    setAccountBusy(true);
+    try {
+      const patch = { full_name: userForm.name, role: userForm.role.toLowerCase(), status: userForm.status };
+      if (patch.role === "intern") patch.company_id = userForm.companyId || null;
+      const result = await recordRpc(supabase, "admin_update_account", { p_id: userModal.editing.id, p_patch: patch });
+      if (!result.ok) { toast(result.error, "error"); return result; }
+      applyAccount(result.data);
+      await refreshAudit(); toast("Account updated", "success");
+      setUserModal({ open: false, editing: null }); return result;
+    } finally { setAccountBusy(false); }
   };
   const deactivate = async (u) => {
-    const next = u.status === "Active" ? "Inactive" : "Active";
-    const { error } = await supabase.from("profiles").update({ status: next }).eq("id", u.id);
-    if (error) {
-      toast(error.message, "error");
-      return;
-    }
-    setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, status: next } : x)));
-    await refreshAudit();
-    toast(`${u.full_name} ${next === "Inactive" ? "deactivated" : "reactivated"}`);
+    if (accountBusy) return;
+    setAccountBusy(true);
+    try {
+      const next = u.status === "Active" ? "Inactive" : "Active";
+      const result = await recordRpc(supabase, "admin_update_account", { p_id: u.id, p_patch: { status: next } });
+      if (!result.ok) return toast(result.error, "error");
+      applyAccount(result.data); await refreshAudit(); toast("Account status updated", "success");
+    } finally { setAccountBusy(false); }
   };
 
   // ── Master data handlers ──
@@ -444,7 +396,7 @@ export default function AdminDashboard({ profile, onLogout }) {
                         <div className="flex gap-3">
                           <button className="text-xs" style={{ color: "var(--primary)" }} onClick={() => openEdit(u)}>Edit</button>
                           <button className="text-xs" style={{ color: u.status === "Active" ? "var(--danger)" : "var(--success)" }}
-                            onClick={() => deactivate(u)}>
+                            disabled={accountBusy} onClick={() => deactivate(u)}>
                             {u.status === "Active" ? "Deactivate" : "Reactivate"}
                           </button>
                         </div>
@@ -466,6 +418,7 @@ export default function AdminDashboard({ profile, onLogout }) {
                   Assign each intern to an instructor and company, set their required hours, and attach the standard document checklist.
                 </p>
               </div>
+              {metricsError && <p role="alert" className="px-4 py-2 text-xs">Progress unavailable: {metricsError}</p>}
               {internsForTab.length === 0 && (
                 <div className="px-4 py-8 text-center text-sm" style={{ color: "var(--muted-foreground)" }}>
                   No intern accounts yet — they'll appear here once someone registers with the Intern role.
@@ -473,8 +426,10 @@ export default function AdminDashboard({ profile, onLogout }) {
               )}
               <div className="divide-y" style={{ borderColor: "var(--border)" }}>
                 {internsForTab.map((intern) => {
-                  const form = internForms[intern.id] ?? { instructor_id: "", company_id: "", required_hours: 486 };
-                  const docCount = docCounts[intern.id] ?? 0;
+                  const form = internForms[intern.id] ?? { instructor_id: "", company_id: "", section_id: "", required_hours: intern.required_hours ?? "" };
+                  const checklist = docCounts[intern.id] ?? checklistState(null);
+                  const metric = internMetrics({ internId: intern.id, required: intern.required_hours,
+                    attendance: metricAttendance?.filter(a => a.intern_id === intern.id), documents: metricDocuments?.filter(d => d.intern_id === intern.id) });
                   return (
                     <div key={intern.id} className="px-4 py-4" style={{ borderTop: "1px solid var(--border)" }}>
                       <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
@@ -503,16 +458,17 @@ export default function AdminDashboard({ profile, onLogout }) {
                           </select>
                         </Field>
                         <Field label="Required Hours">
-                          <input type="number" min="0" value={form.required_hours}
+                          <input type="number" min="0.01" max="10000" step="0.01" value={form.required_hours}
                             onChange={(e) => updateInternForm(intern.id, "required_hours", e.target.value)}
                             className={inputCls} style={inputStyle} />
                         </Field>
                       </div>
+                      <p className="text-xs mt-2">Logged: {displayHours(metric.logged)} hrs | Verified: {displayHours(metric.verified)} hrs | {metric.risk} | Clearance: {metric.cleared === null ? "Unknown" : metric.cleared ? "Eligible" : "Incomplete"}</p>
                       <div className="flex items-center justify-between gap-3 mt-3 flex-wrap">
-                        <button onClick={() => attachStandardDocs(intern.id)} disabled={docCount > 0 || attachingDocsId === intern.id}
+                        <button onClick={() => attachStandardDocs(intern.id)} disabled={checklist.complete || !checklist.known || attachingDocsId === intern.id}
                           className="text-xs px-3 py-1.5 rounded-lg font-medium disabled:opacity-60 disabled:cursor-not-allowed"
-                          style={{ background: docCount > 0 ? "var(--success-bg)" : "var(--secondary)", color: docCount > 0 ? "var(--success)" : "var(--primary)" }}>
-                          {docCount > 0 ? `✓ Checklist attached (${docCount})` : attachingDocsId === intern.id ? "Attaching…" : "Attach Standard Documents"}
+                          style={{ background: checklist.complete ? "var(--success-bg)" : "var(--secondary)", color: checklist.complete ? "var(--success)" : "var(--primary)" }}>
+                          {attachingDocsId === intern.id ? "Attaching..." : checklist.complete ? "Standard checklist complete (4/4)" : checklist.known ? `Attach missing standard requirements (${checklist.present}/4 present)` : "Checklist unavailable"}
                         </button>
                         <button onClick={() => saveInternAssignment(intern.id)} disabled={savingInternId === intern.id}
                           className="text-xs px-4 py-1.5 rounded-lg font-semibold disabled:opacity-60"
@@ -677,7 +633,7 @@ export default function AdminDashboard({ profile, onLogout }) {
               </select>
             </Field>
             <div className="flex gap-2 pt-1">
-              <button onClick={saveUser} className="flex-1 py-2.5 rounded-lg text-sm font-semibold"
+              <button onClick={saveUser} disabled={accountBusy} className="flex-1 py-2.5 rounded-lg text-sm font-semibold"
                 style={{ background: "var(--primary)", color: "#fff" }}>
                 Save Changes
               </button>

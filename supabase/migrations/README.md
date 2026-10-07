@@ -12,6 +12,10 @@ files by glob or assume a bootstrap reset is a rollback.
 | 3 | `M03_attendance_integrity.sql` | M02; read-only phase2 inspection and separately reviewed legacy disposition. Stops on duplicate daily/open/Pending identity. Unique indexes, NOT VALID CHECKs, future-write triggers, serialized server clock capture. Maintenance window required. |
 | 4 | `M04_private_documents_bucket.sql` | M01 Storage policies and reviewed existing bucket. Explicit private/MIME/size UPDATE. Independent of M03 legacy gate; may be scheduled after M01 if M03 is blocked. Preserves objects and unrelated buckets. |
 | 5, deferred | `M05_validate_attendance.sql` | M03/M04; repeat inspection and explicitly reviewed historical repairs, if any. No guessing/backfill. VALIDATE only clean history; failure leaves M03 new-write enforcement intact. |
+| 6 | `M06_rubric_hours.sql` | M01-M04; read-only Phase 4 inspection/review. NOT VALID target/rubric CHECKs, authoritative evaluation RPC and retry identity. M05 may remain deferred. No old score/criteria/target rewrite. |
+| 7 | `M07_account_lifecycle.sql` | M06; aborts incompatible role/assignment/missing-extension history unchanged. Atomic Admin lifecycle/assignment, deferred relationship guards; protected raw writes revoked. |
+| 8 | `M08_document_versions.sql` | M07 + exact M04 bucket settings; inspect Storage metadata size/mimetype and existing other-bucket DELETE ACL/policies. Duplicate requirements abort unchanged. Adds unique identity, receipt/version/event tables, constrained Storage cleanup and versioned review/access. Legacy evidence stays version zero. |
+| 9, deferred | `M09_validate_domain.sql` | M06-M08; independently reviewed clean historical targets/rubrics. VALIDATE + evaluation score NOT NULL only; failure retains M06 new-write checks and original data. Independent of the M05 attendance gate. |
 
 M01's preflight stops on unexpected ownership, privileged routines, exposed views,
 extra domain/Auth triggers or restrictive Storage policy drift. Resolve drift in
@@ -19,10 +23,16 @@ a separately reviewed proposal before rehearsal; never simply remove the guard.
 All old policies on the 12 tables are replaced, including unknown permissive ones.
 Existing Storage policies are restricted to buckets other than documents; existing
 other-bucket predicates/grants are preserved, with SELECT/INSERT granted as needed
-for the new document operations. No UPDATE/DELETE grants are added for Storage.
+for the new document operations. M01 adds no Storage UPDATE/DELETE grants.
 The new documents policies require Active status, own insertion or assigned current
 evidence reads. No documents UPDATE/DELETE policy is added. Actual bucket privacy
 is addressed separately by M04; public delivery bypasses private-object RLS.
+M08 subsequently replaces path-only upload/review RPC access, grants Storage
+DELETE for the API and permits documents deletion only for the active owner's
+abandoned, uncommitted receipt. Restrictive guards block document overwrites,
+anonymous access and permissive-policy bypass. Review unrelated-bucket DELETE
+policies before the table grant; no global allow policy is added. Use Storage API
+to remove file bytes, never SQL deletion of provider metadata.
 
 Schema deployment must precede the new client build: App requires `my_profile`,
 Intern uses clock/correction/upload RPCs and Instructor uses review RPCs. Older
@@ -35,15 +45,15 @@ Rehearsal: `npm test` uses a fresh in-memory Postgres engine, synthetic Auth/Sto
 tables and `../tests/baseline.sql`; it never reads/runs bootstrap. Supabase HTTP,
 real grants/owners, JWT session behavior, PostgREST FK embedding and private object
 delivery require separate disposable project verification in `../tests/M01.md`
-and `../tests/PHASE2.md`. Phase 2 also starts a fresh loopback-only native Postgres
+and `../tests/PHASE2.md` and `../tests/PHASE4.md`. Phase 2 also starts a fresh loopback-only native Postgres
 17.10 cluster with synthetic Auth/Storage tables for real separate-connection
 race/fault tests. It accepts no external database URL/credentials and removes
 only its verified disposable directory after stopping the process.
 
-M01-M05 are human version labels, not automatic Supabase CLI timestamp discovery.
+M01-M09 are human version labels, not automatic Supabase CLI timestamp discovery.
 Record exact reviewed file hashes in the operator migration ledger; convert each
-to a timestamp filename only as part of a reviewed CLI adoption. Future Phase 4
-domain work starts at M06; do not reuse a committed version number.
+to a timestamp filename only as part of a reviewed CLI adoption. Future Phase 5
+aggregate/index work starts at M10; do not reuse a committed version number.
 
 Rollback: before commit SQL errors roll back the transaction. After commit disable
 affected operations and apply a reviewed forward repair while keeping authorization

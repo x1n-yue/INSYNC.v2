@@ -11,9 +11,11 @@ build in a separate process with env-file loading disabled. See
 supabase/tests/PHASE3.md.
 
 `audit-baseline.test.js` records remaining audit probes as **characterization
-tests of known defects**, not proof of correctness. After Phase 1 it has 10 cases:
-the Manila owner date check now asserts corrected behavior, and overnight/seconds
-calculation moved to actual Postgres RPC tests. Source extraction is temporary: it binds probes to
+tests of known defects**, not proof of correctness. After Phase 4 it has 3 cases:
+correct Manila date behavior, SDK maybeSingle cardinality and remaining low
+contrast characterization. Required-hours, zero-row handler and chart probes now
+assert desired shared-module/transport behavior in Phase 4 suites; overnight/seconds
+calculation moved to actual Postgres RPC tests. Source extraction binds probes to
 actual handlers/calculations while Phase 0 forbids application behavior changes.
 When a finding is fixed, replace that probe with shared-module or transport tests
 asserting the desired result; do not preserve buggy behavior just to keep it green.
@@ -56,3 +58,11 @@ closing clients/stopping the server. Platform optional binaries/scripts must be
 installed; do not disable a failing native suite or count it as passed. No existing
 database/bootstrap is used. Local loopback TCP is the only DB network transport.
 See `../supabase/tests/PHASE2.md` for exact coverage and pending live checks.
+
+Phase 4 adds `phase4-business.test.js`, `phase4-client.test.js`,
+`phase4-migration-gates.test.js` and `phase4-postgres.test.js`: shared target/rubric/
+calendar/verified-clearance logic, actual failed assignment handler, upload/link/
+feed transports, legacy-preserving M06-M09 gates and native final-stage grants,
+RLS, atomic lifecycle, immutable versions, audit faults and seven observed races.
+Read `../supabase/tests/PHASE4.md` for scope, pending real API/browser cases and
+Storage metadata/physical-byte limitations. No test executes a real project.

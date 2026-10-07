@@ -12,6 +12,13 @@ import { supabase } from "../lib/supabaseClient";
 import { manilaDate, recordRpc } from "../lib/authority";
 import { elapsedSession, formatBusinessDate, formatClockTime, isOpenSession } from "../lib/attendance";
 import { downloadArtifact, dtrArtifact } from "../lib/exports";
+import { evaluationResult } from "../lib/business";
+import { chartHours, displayHours, filterAttendance, internMetrics } from "../lib/metrics";
+import { completeRows } from "../lib/workflows";
+import { recoverUpload, uploadDocument } from "../lib/documents";
+import DocumentActions from "./DocumentActions";
+import EvaluationCriteria from "./EvaluationCriteria";
+import AnnouncementsFeed from "./AnnouncementsFeed";
 import Shell from "./Shell";
 import Modal from "./Modal";
 import { useToast } from "./Toast";
@@ -37,8 +44,8 @@ const navItems = [
   { id: "reports", label: "Reports", icon: <IconFileDown size={15} /> },
 ];
 
-const weekViews = ["Weekly", "Monthly", "All Time"];
-const dtrFilters = ["all", "week", "month"];
+const weekViews = ["Weekly", "Monthly", "Yearly", "All Time"];
+const dtrFilters = ["all", "week", "month", "year"];
 
 function formatTime(d) {
   return formatClockTime(d);
@@ -93,6 +100,12 @@ export default function InternDashboard({ profile, onLogout }) {
   const [clockBusy, setClockBusy] = useState(false);
   const [clockLoadError, setClockLoadError] = useState(null);
   const [correctionBusy, setCorrectionBusy] = useState(false);
+  const [uploadBusy, setUploadBusy] = useState(null);
+  const [recoveryRows, setRecoveryRows] = useState([]);
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
+  const [metricsError, setMetricsError] = useState(null);
+  const [attendanceKnown, setAttendanceKnown] = useState(false);
+  const [documentsKnown, setDocumentsKnown] = useState(false);
   const [internInfo, setInternInfo] = useState(null); // { required_hours, companies:{name}, profiles:{full_name} }
   const [dtr, setDtr] = useState([]); // attendance_logs, newest first
   const [evaluationList, setEvaluationList] = useState([]);
@@ -117,21 +130,18 @@ export default function InternDashboard({ profile, onLogout }) {
 
   const loadAll = async () => {
     setLoading(true);
-    const [{ data: internRow }, { data: attendanceRows }, { data: evalRows }, { data: exceptionRows }, { data: docRows }, { data: openRow, error: openError }] =
+    const capture = table => completeRows(supabase, table, profile.id).then(data => ({ data })).catch(error => ({ data: null, error }));
+    const [{ data: internRow, error: internError }, { data: attendanceRows, error: attendanceError }, { data: evalRows }, { data: exceptionRows }, { data: docRows, error: docError }, { data: openRow, error: openError }] =
       await Promise.all([
         supabase
           .from("interns")
           .select("instructor_id, required_hours, companies(name)")
           .eq("id", profile.id)
           .maybeSingle(),
-        supabase.from("attendance_logs").select("*").eq("intern_id", profile.id).order("log_date", { ascending: false }),
-        supabase
-          .from("evaluations")
-          .select("*")
-          .eq("intern_id", profile.id)
-          .order("created_at", { ascending: false }),
+        capture("attendance_logs"),
+        capture("evaluations"),
         supabase.from("attendance_exceptions").select("*").eq("intern_id", profile.id).order("created_at", { ascending: false }),
-        supabase.from("documents").select("*").eq("intern_id", profile.id).order("name"),
+        capture("documents"),
         supabase.from("attendance_logs").select("*").eq("intern_id", profile.id).is("time_out", null).maybeSingle(),
       ]);
     const nameIds = [...new Set([internRow?.instructor_id, ...(evalRows ?? []).map((e) => e.evaluator_id)].filter(Boolean))];
@@ -144,9 +154,11 @@ export default function InternDashboard({ profile, onLogout }) {
     const names = Object.fromEntries((nameRows ?? []).map((p) => [p.id, { full_name: p.full_name }]));
     setInternInfo(internRow ? { ...internRow, profiles: names[internRow.instructor_id] } : null);
     setClockLoadError(openError?.message ?? null);
-    const history = attendanceRows ?? [];
+    setMetricsError(internError?.message || attendanceError?.message || docError?.message || null);
+    setAttendanceKnown(Array.isArray(attendanceRows)); setDocumentsKnown(Array.isArray(docRows));
+    const history = [...(attendanceRows ?? [])].sort((a,b) => b.log_date.localeCompare(a.log_date) || b.id.localeCompare(a.id));
     setDtr(openRow && !history.some((row) => row.id === openRow.id) ? [openRow, ...history] : history);
-    setEvaluationList((evalRows ?? []).map((e) => ({ ...e, profiles: names[e.evaluator_id] })));
+    setEvaluationList([...(evalRows ?? [])].sort((a,b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id)).map((e) => ({ ...e, profiles: names[e.evaluator_id] })));
     setExceptions(exceptionRows ?? []);
     setDocs(docRows ?? []);
     setLoading(false);
@@ -215,49 +227,50 @@ export default function InternDashboard({ profile, onLogout }) {
     toast("Exception request submitted — awaiting instructor review", "info");
   };
 
-  const handleDocUpload = async (doc, file) => {
-    const path = `${profile.id}/${doc.doc_type}-${Date.now()}-${file.name}`;
-    const { error: uploadError } = await supabase.storage.from("documents").upload(path, file, { upsert: false });
-    if (uploadError) return toast(uploadError.message, "error");
-    const result = await recordRpc(supabase, "submit_document_upload", { p_id: doc.id, p_path: path, p_name: file.name });
-    if (!result.ok) return toast(result.error, "error");
-    setDocs((prev) => prev.map((d) => d.id === doc.id ? result.data : d));
-    toast(`${file.name} uploaded — pending instructor review`, "info");
+  const refreshRecovery = async () => {
+    const { data, error } = await supabase.rpc("unfinished_document_uploads");
+    if (error) toast("Upload recovery unavailable: " + error.message, "error");
+    else setRecoveryRows(data ?? []);
   };
-
-  const hoursRendered = useMemo(
-    () => Math.round(dtr.reduce((sum, d) => sum + (Number(d.hours) || 0), 0) * 10) / 10,
-    [dtr]
-  );
-  const hoursRequired = internInfo?.required_hours ?? 486;
-  const progress = hoursRequired > 0 ? Math.round((hoursRendered / hoursRequired) * 100) : 0;
-
-  const remainingHours = Math.max(0, hoursRequired - hoursRendered);
-
-  const filteredDtr = dtrFilter === "week" ? dtr.slice(0, 5) : dtrFilter === "month" ? dtr.slice(0, 20) : dtr;
-
+  useEffect(() => { refreshRecovery(); /* own expired/abandoned receipts only */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile.id]);
+  const handleDocUpload = async (doc, file) => {
+    if (uploadBusy) return;
+    setUploadBusy(doc.id);
+    try {
+      const result = await uploadDocument(supabase, doc, file);
+      if (!result.ok) { toast(result.error, "error"); await refreshRecovery(); return result; }
+      setDocs(prev => prev.map(d => d.id === result.data.id ? result.data : d));
+      toast("Upload finalized; pending review", "info"); return result;
+    } finally { setUploadBusy(null); }
+  };
+  const cleanupUpload = async (uploadId) => {
+    if (recoveryBusy || uploadBusy) return;
+    setRecoveryBusy(true);
+    try {
+      const result = await recoverUpload(supabase, uploadId);
+      if (result.ok) setDocs(prev => prev.map(d => d.id === result.data.id ? result.data : d));
+      toast(result.ok ? "Finalized upload recovered" : result.cleanupPending ? result.error : "Unfinished upload cleanup confirmed", result.cleanupPending ? "error" : "info");
+      await refreshRecovery();
+    } finally { setRecoveryBusy(false); }
+  };
+  const metric = useMemo(() => internMetrics({ internId: profile.id, required: internInfo?.required_hours,
+    attendance: attendanceKnown ? dtr : null, documents: documentsKnown ? docs : null }), [profile.id, internInfo, attendanceKnown, documentsKnown, dtr, docs]);
+  const hoursRendered = metric.logged;
+  const hoursRequired = metric.target;
+  const progress = metric.progress;
+  const remainingHours = metric.remaining;
+  const filteredDtr = filterAttendance(dtr, dtrFilter);
   const latestEval = evaluationList[0];
-  const docApprovedCount = docs.filter((d) => d.status === "Approved").length;
-  const clearanceReady = hoursRendered >= hoursRequired;
-
-  const weeklyDataSets = useMemo(() => {
-    const withHours = [...dtr].filter((d) => d.hours != null).sort((a, b) => a.log_date.localeCompare(b.log_date));
-    const byDay = withHours.slice(-8).map((d) => ({ day: formatBusinessDate(d.log_date, { month: "short", day: "numeric" }), hours: Number(d.hours) }));
-
-    const byMonthMap = {};
-    withHours.forEach((d) => {
-      const key = formatBusinessDate(d.log_date, { month: "short" });
-      byMonthMap[key] = byMonthMap[key] ? { total: byMonthMap[key].total + Number(d.hours), count: byMonthMap[key].count + 1 } : { total: Number(d.hours), count: 1 };
-    });
-    const byMonth = Object.entries(byMonthMap).map(([day, v]) => ({ day, hours: Math.round((v.total / v.count) * 10) / 10 }));
-
-    return { Weekly: byDay, Monthly: byMonth, "All Time": byMonth };
-  }, [dtr]);
+  const docApprovedCount = metric.approved;
+  const clearanceReady = metric.cleared;
+  const weeklyDataSets = useMemo(() => ({ Weekly: chartHours(dtr, "week"), Monthly: chartHours(dtr, "month"), Yearly: chartHours(dtr, "year"), "All Time": chartHours(dtr, "all") }), [dtr]);
 
   const stats = [
-    { icon: <IconClock size={18} />, iconBg: "#eff6ff", iconColor: "#2563eb", label: "Hours Rendered", value: `${hoursRendered}`, sub: `of ${hoursRequired} Required` },
-    { icon: <IconCheck size={18} />, iconBg: "#f0fdf4", iconColor: "#16a34a", label: "Completion", value: `${progress}%`, sub: "Overall progress" },
-    { icon: <IconAward size={18} />, iconBg: "#fefce8", iconColor: "#d97706", label: "Latest Score", value: latestEval ? `${Number(latestEval.overall_score).toFixed(0)}/100` : "—", sub: "Most recent evaluation" },
+    { icon: <IconClock size={18} />, iconBg: "#eff6ff", iconColor: "#2563eb", label: "Logged Hours", value: displayHours(hoursRendered), sub: `Verified: ${displayHours(metric.verified)} / ${hoursRequired ?? "Unavailable"} required` },
+    { icon: <IconCheck size={18} />, iconBg: "#f0fdf4", iconColor: "#16a34a", label: "Completion", value: progress === null ? "Unavailable" : `${progress}%`, sub: `Verified progress | ${metric.risk}` },
+    { icon: <IconAward size={18} />, iconBg: "#fefce8", iconColor: "#d97706", label: "Latest Score", value: evaluationResult(latestEval) !== null ? `${evaluationResult(latestEval)}/100` : "—", sub: "Most recent evaluation" },
   ];
 
   return (
@@ -271,6 +284,7 @@ export default function InternDashboard({ profile, onLogout }) {
       onLogout={onLogout}
     >
       <div className="p-6 space-y-5">
+        {metricsError && <p role="alert" className="text-sm">Progress unavailable: {metricsError} <button onClick={loadAll} className="underline">Retry</button></p>}
         {loading && <div className="text-sm" style={{ color: "var(--muted-foreground)" }}>Loading…</div>}
 
         {/* ── DASHBOARD ─────────────────────────────────────────────────── */}
@@ -285,6 +299,8 @@ export default function InternDashboard({ profile, onLogout }) {
               </p>
             </div>
 
+            <AnnouncementsFeed />
+            <p className="text-xs">Clearance: {clearanceReady === null ? "Unknown" : clearanceReady ? "Eligible" : "Incomplete"} | Standard requirements: {metric.checklist.present}/4</p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {stats.map((s) => <StatCard key={s.label} {...s} />)}
             </div>
@@ -293,7 +309,7 @@ export default function InternDashboard({ profile, onLogout }) {
               <div className="lg:col-span-3 space-y-4">
                 <div className="rounded-xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-sm font-semibold">{weekView} Hours Log</h2>
+                    <h2 className="text-sm font-semibold">{weekView} Logged Hours (sum)</h2>
                     <div className="relative">
                       <button className="text-xs" style={{ color: "var(--primary)" }}
                         onClick={() => setShowWeekPicker((v) => !v)}>
@@ -326,10 +342,10 @@ export default function InternDashboard({ profile, onLogout }) {
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                       <XAxis dataKey="day" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} domain={[0, 10]} />
+                      <YAxis tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} domain={[0, "auto"]} />
                       <Tooltip
                         contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: "8px", fontSize: "12px" }}
-                        formatter={(v) => [`${v} hrs`, "Hours"]}
+                        formatter={(v) => [`${v} hrs`, "Logged hours (sum)"]}
                       />
                       <Area type="monotone" dataKey="hours" stroke="var(--primary)" strokeWidth={2} fill="url(#hoursGrad)"
                         dot={{ r: 3, fill: "var(--primary)", strokeWidth: 0 }} activeDot={{ r: 5 }} />
@@ -340,14 +356,14 @@ export default function InternDashboard({ profile, onLogout }) {
                 <div className="rounded-xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-sm font-semibold">Overall Progress</span>
-                    <span className="text-sm font-bold" style={{ color: "var(--primary)" }}>{progress}%</span>
+                    <span className="text-sm font-bold" style={{ color: "var(--primary)" }}>{progress === null ? "Unavailable" : `${progress}%`}</span>
                   </div>
                   <div className="h-2.5 rounded-full overflow-hidden" style={{ background: "var(--secondary)" }}>
-                    <div className="h-full rounded-full transition-all" style={{ width: `${progress}%`, background: "var(--primary)" }} />
+                    <div className="h-full rounded-full transition-all" style={{ width: `${progress ?? 0}%`, background: "var(--primary)" }} />
                   </div>
                   <div className="flex justify-between mt-2 text-xs" style={{ color: "var(--muted-foreground)" }}>
-                    <span>{hoursRendered} hrs rendered</span>
-                    <span>{remainingHours.toFixed(1)} hrs remaining</span>
+                    <span>{displayHours(metric.verified)} verified hrs</span>
+                    <span>{displayHours(remainingHours)} verified hrs remaining</span>
                   </div>
                 </div>
               </div>
@@ -373,12 +389,13 @@ export default function InternDashboard({ profile, onLogout }) {
                           </div>
                         </div>
                         <div className="text-right shrink-0">
-                          <div className="text-sm font-bold" style={{ color: "var(--primary)" }}>{Number(ev.overall_score).toFixed(0)}/100</div>
+                          <div className="text-sm font-bold" style={{ color: "var(--primary)" }}>{evaluationResult(ev) ?? "Unavailable"}/100</div>
                           <div className="mt-1 h-1 w-14 rounded-full overflow-hidden ml-auto" style={{ background: "var(--secondary)" }}>
-                            <div className="h-full rounded-full" style={{ width: `${Number(ev.overall_score)}%`, background: "var(--primary)" }} />
+                            <div className="h-full rounded-full" style={{ width: `${evaluationResult(ev) ?? 0}%`, background: "var(--primary)" }} />
                           </div>
                         </div>
                       </div>
+                      <EvaluationCriteria criteria={ev.competencies} />
                       {ev.feedback && (
                         <p className="text-xs mt-2 italic" style={{ color: "var(--muted-foreground)" }}>"{ev.feedback}"</p>
                       )}
@@ -441,7 +458,7 @@ export default function InternDashboard({ profile, onLogout }) {
                       <button key={f} onClick={() => setDtrFilter(f)}
                         className="text-xs px-2.5 py-1.5 capitalize"
                         style={{ background: dtrFilter === f ? "var(--primary)" : "transparent", color: dtrFilter === f ? "#fff" : "var(--muted-foreground)" }}>
-                        {f === "all" ? "All" : f === "week" ? "This Week" : "This Month"}
+                        {f === "all" ? "All" : f === "week" ? "This Week" : f === "month" ? "This Month" : "This Year"}
                       </button>
                     ))}
                   </div>
@@ -593,14 +610,18 @@ export default function InternDashboard({ profile, onLogout }) {
                   Pre-internship clearance & required submissions · {docApprovedCount}/{docs.length} Approved
                 </p>
               </div>
-              {clearanceReady && docs.length > 0 && docApprovedCount === docs.length && (
+              {clearanceReady && (
                 <span className="text-xs px-3 py-1.5 rounded-lg font-semibold" style={{ background: "var(--success-bg)", color: "var(--success)" }}>
                   Clearance Eligible
                 </span>
               )}
             </div>
 
-            {docs.length === 0 ? (
+            <p className="text-xs">PDF, JPEG or PNG, up to 10 MiB. Replacement resets current review and retains previous evidence.</p>
+            {recoveryRows.map(v => <div key={v.id} className="text-xs">Unfinished upload: {v.file_name} <button disabled={recoveryBusy || uploadBusy !== null} onClick={() => cleanupUpload(v.id)} className="underline">Retry cleanup</button></div>)}
+            <button onClick={refreshRecovery} disabled={recoveryBusy || uploadBusy !== null} className="text-xs underline">Refresh unfinished uploads</button>
+            <p className="text-xs">Standard requirements: {documentsKnown ? `${metric.checklist.present}/4 present` : "Unavailable"}</p>
+            {!documentsKnown ? <p role="alert">Document requirements unavailable. <button onClick={loadAll} className="underline">Retry</button></p> : docs.length === 0 ? (
               <div className="rounded-xl p-8 text-center text-sm" style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--muted-foreground)" }}>
                 No document requirements have been set up for you yet — check with your instructor.
               </div>
@@ -648,16 +669,17 @@ export default function InternDashboard({ profile, onLogout }) {
                             </div>
                           )}
                         </div>
+                        <DocumentActions doc={doc} />
                         <div className="shrink-0">
-                          <input type="file" accept=".pdf,.doc,.docx,.jpg,.png"
+                          <input type="file" accept="application/pdf,image/jpeg,image/png"
                             ref={(el) => { fileInputRefs.current[doc.id] = el; }}
                             onChange={(e) => { const f = e.target.files?.[0]; if (f) handleDocUpload(doc, f); e.target.value = ""; }}
                             className="hidden" />
-                          <button onClick={() => fileInputRefs.current[doc.id]?.click()}
+                          <button disabled={uploadBusy !== null || recoveryBusy} onClick={() => fileInputRefs.current[doc.id]?.click()}
                             className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg"
                             style={{ background: doc.status === "Approved" ? "var(--secondary)" : "var(--primary)", color: doc.status === "Approved" ? "var(--muted-foreground)" : "#fff" }}>
                             <IconUpload size={12} />
-                            {doc.status === "Approved" ? "Replace" : doc.file_name ? "Resubmit" : "Upload"}
+                            {uploadBusy === doc.id ? "Uploading..." : doc.status === "Approved" ? "Replace" : doc.file_name ? "Resubmit" : "Upload"}
                           </button>
                         </div>
                       </div>
@@ -690,16 +712,17 @@ export default function InternDashboard({ profile, onLogout }) {
                       <div className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>
                         OJT Coordinator: {ev.profiles?.full_name ?? "—"} · {new Date(ev.created_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" , timeZone: "Asia/Manila" })}
                       </div>
+                      <EvaluationCriteria criteria={ev.competencies} />
                       {ev.feedback && (
                         <p className="text-sm mt-2 italic" style={{ color: "var(--muted-foreground)" }}>"{ev.feedback}"</p>
                       )}
                     </div>
                     <div className="text-right shrink-0">
                       <div className="text-2xl font-bold" style={{ color: "var(--primary)" }}>
-                        {Number(ev.overall_score).toFixed(0)}<span className="text-sm font-normal" style={{ color: "var(--muted-foreground)" }}>/100</span>
+                        {evaluationResult(ev) ?? "Unavailable"}<span className="text-sm font-normal" style={{ color: "var(--muted-foreground)" }}>/100</span>
                       </div>
                       <div className="mt-1 h-1.5 w-24 rounded-full overflow-hidden ml-auto" style={{ background: "var(--secondary)" }}>
-                        <div className="h-full rounded-full" style={{ width: `${Number(ev.overall_score)}%`, background: "var(--primary)" }} />
+                        <div className="h-full rounded-full" style={{ width: `${evaluationResult(ev) ?? 0}%`, background: "var(--primary)" }} />
                       </div>
                     </div>
                   </div>

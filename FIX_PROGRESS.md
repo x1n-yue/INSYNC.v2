@@ -1,16 +1,17 @@
 # INSync remediation progress
 
-Updated 2026-10-07, Phases 0-3. Both audit and checklist read fully before edits.
+Updated 2026-10-07, Phases 0-4. Both audit and checklist read fully before edits.
 Starting HEAD 75998c0; no applicable AGENTS.md in workspace/ancestors. Phase 0
 left behavior unchanged, Phases 1-2 authored M01-M05 and affected UI, Phase 3
 updates tooling, honest downloads, setup guard and bootstrap warning comments.
+Phase 4 adds M06-M09, shared domain derivations and versioned document workflows.
 No real project SQL/Auth/Storage execution, credential output or legacy row repair.
 
-**Phases 0-3 complete.** All 39 findings remain tracked below: 3 Fixed,
-17 Fixed-pending-live-verification, 19 Not-fixed for the stated later-phase work.
+**Phases 0-4 complete.** All 39 findings remain tracked below: 3 Fixed,
+25 Fixed-pending-live-verification, 11 Not-fixed for the stated later-phase work.
 Known-defect characterization tests are not remediation evidence. Assumptions
-are in DECISIONS.md. Stop after the Phase 3 commit and await the user's continue;
-Phase 4 has not started. Earlier phase records below describe their then-current
+are in DECISIONS.md. Stop after the Phase 4 commit and await the user's continue;
+Phase 5 has not started. Earlier phase records below describe their then-current
 state and are retained as history, including advisories resolved in Phase 3.
 
 ## Phase 0 artifacts and checks
@@ -191,6 +192,62 @@ ESLint 9 remains an unsupported-major notice while React lint plugin declares no
 ESLint 10 support; no npm advisory currently. Provider backup status and old demo
 password reuse must be checked by authorized operators. No production-ready claim.
 
+## Phase 4 implementation and verification
+
+Starting revision 6bc9bf5. User authorized Phase 4 by continue. Scope: INS-017,
+018, 019, 020, 021, 022, 024 and 025; Phase 5 has not started.
+
+- M06: strict target and rubric validators, NOT VALID historical checks, server
+  weighted score/author, idempotent submission UUID and no raw evaluation writes.
+  M09 separately validates reviewed clean history and applies score NOT NULL.
+- M07: atomic Active Admin lifecycle/assignment with retained intern extension,
+  Active instructor validation, explicit unassignment, protected raw-write
+  revocation and deferred relationship invariants. Incompatible legacy references
+  stop the migration unchanged; no silently normalized rows.
+- M08: unique requirements after duplicate preflight, attach only missing standard
+  types, generated upload reservations, exact MIME/size finalization, immutable
+  committed versions and append-only review history, trusted reviewer/time,
+  expected upload/review versions, constrained cleanup and short-lived access.
+  Old path-only RPCs revoked; two new RLS tables and mandatory audit triggers.
+  Restrictive document Storage guards cannot be OR-bypassed. No global document
+  DELETE or overwrite; cleanup reconciles ambiguous outcomes before Storage API
+  removal, preserves committed evidence and exposes unfinished-upload retries.
+- business.js, hours.js, metrics.js, workflows.js: pure target/rubric/evidence/
+  calendar/chart/clearance/risk rules shared by all dashboards and DTR export.
+  Logged and verified hours separated, persisted target used, true Manila periods,
+  year-aware sums, standard plus custom requirements and unknown legacy evidence.
+  No fixed velocity. Count-checked prerequisite/feed reads bounded at 50,000.
+- DocumentActions, EvaluationCriteria, AnnouncementsFeed and dashboards: private
+  View/Download, expiration/retry and stale-link response guards; criteria/null
+  handling; UUID recipient labels; loading/empty/error Retry/Refresh feed; busy
+  new mutations, draft preservation and outcome-based state updates.
+- inspection/04_phase4_domain.sql and PHASE4_REPAIR_PROPOSAL.md: read-only anomalies
+  and review proposal before constraints. RUNBOOK, migration guide, PHASE4.md,
+  README, tests/README and D32-D35 cover ordering, rollback, decisions and live
+  acceptance. No legacy data repair, real project operation or dependency change.
+
+| Check | Phase 4 actual result / limit |
+|---|---|
+| npm test, Node 24.18.0 | 13 files, 2,168 tests pass: 2,054 retained + 114 Phase 4 (34 business, 13 client, 4 migration-gate, 63 native SQL cases). Seven obsolete defect expectations replaced with desired behavior; three baseline probes remain. |
+| Native overlap/faults | Seven separate-connection races observe lock waits and assert final outcomes; audit failure rolls back upload finalization, review, evaluation, account and assignment. Final-stage raw-write denial covers new evidence tables across API roles/statuses; catalog grants/owner/search_path and permissive-policy bypass tests pass. |
+| npm run build | Passed, Vite 7.3.7, 761 modules; main JS 948.53 kB / gzip 269.21 kB, lazy XLSX 71.27 / 19.77, CSS 23.08 / 5.33. Before Phase 4 main JS 935.73 / 264.57. Large-chunk warning remains INS-036 Phase 6; compilation is not authorization proof. |
+| npm run lint | Passed, zero errors, five pre-existing unused-import warnings (3 Admin, 2 Instructor). |
+| npm audit --ignore-scripts | Zero vulnerabilities at this check; package.json/lock unchanged in Phase 4. No forced audit fix. |
+| Migration safety | Actual M06-M09 run only on fresh synthetic local databases. Anomaly gates retain invalid legacy fixtures, failed validation rolls back and preserves NOT VALID new-write enforcement. Bootstrap/M01-M05 executable SQL unchanged. |
+| Live Supabase / browser / screen reader | Not executed. PHASE4.md lists RT-05/07/14-17 plus role/status/Storage checks and actual provider byte cleanup, RPC shapes, signed delivery/expiry, real-client races, layout/keyboard checks. |
+
+Residuals: operator must review legacy anomalies before unique constraints/M07
+and historical M05/M09 validation; version-zero legacy evidence needs explicit
+resubmission before new approval/clearance. Actual JWT/HTTP/Storage metadata and
+file bytes remain unverified. MIME/size checks do not inspect content or scan for
+malware. Signed links are bearer links until 60-second expiry. Review unrelated
+bucket DELETE policies before M08's Storage table grant. Global advisory locking
+is conservative and contention is unmeasured. Loaded metrics/read pages are not
+transaction snapshots, cannot detect every equal-count edit and age until refresh;
+server aggregates, general error states, pagination/focus/midnight refresh and auth
+recovery remain Phase 5. Accessibility, current-year/admin completeness and lazy
+chunks remain Phase 6. No certification, live security or readiness claim.
+
 ## Finding register
 
 M01 refers to `supabase/migrations/M01_authority.sql`; SQL suite refers to
@@ -205,9 +262,9 @@ remain in `tests/audit-baseline.test.js`; local SQL checks are separate evidence
 | INS-003 | Fixed-pending-live-verification | M01; App.jsx; SQL suite | Local role/status matrix + retained-identity deactivation pass. Status-only non-Active profile RPC. Live JWT/Storage checks pending; public bucket delivery still INS-015. |
 | INS-004 | Fixed-pending-live-verification | M01; SQL suite; D09/D20 | Assigned scope, ownership immutability/RPC-only review and foreign-folder checks pass locally. Pending live RT-03/04, actual extra policy/RPC inventory. |
 | INS-005 | Fixed-pending-live-verification | M01; InternDashboard.jsx; SQL suite | Own/assigned profile reads; related staff id/name RPC; equivalent roster SQL join passes. Pending actual PostgREST embeds/RPC shapes RT-03. |
-| INS-006 | Fixed-pending-live-verification | M01; InstructorDashboard.jsx; SQL suite; D07/D22 | Bound author, UUID active assigned recipient, frozen broadcast audience, author/recipient/Admin reads pass locally. Intern feed still INS-024; live RT-16 pending. |
+| INS-006 | Fixed-pending-live-verification | M01; InstructorDashboard.jsx; AnnouncementsFeed.jsx; SQL suites; D07/D22 | Bound author, UUID Active assigned recipient, frozen broadcast audience, author/recipient/Admin reads; personal/roster delivery after rename/reassignment passes locally. Live RT-16 pending. |
 | INS-007 | Fixed-pending-live-verification | M01/M02/M03; authority.js; dashboards; SQL suites | Raw writes denied; trusted server clock/correction/review, audit and independent native races pass. Legacy validation/data review and live RT-03/08/10 pending. |
-| INS-008 | Fixed-pending-live-verification | M01; authority.js; dashboards; SQL suite | Admin-only empty Pending requirements, owner upload/reset RPC, own prefix/object check, staff review RPC. Local tampering tests pass; live RT-04/07/15 and full version lifecycle pending. |
+| INS-008 | Fixed-pending-live-verification | M01/M08; documents.js; dashboards; SQL suites | Admin-only empty requirements, receipt/expected-version owner upload, versioned review, scoped cleanup; old path-only RPC revoked. Local tampering/races pass; live RT-04/07/15 pending. |
 | INS-009 | Fixed-pending-live-verification | M02; AdminDashboard; phase2-postgres.test.js; D15/D25 | API audit writes denied including Admin; actor/time/changed fields and 11-table mandatory audit; zero-row/no-op absent; audit failure rolls back. Legacy provenance unverified. Live RT-12/20 and catalog pending. |
 | INS-010 | Fixed-pending-live-verification | M02; authority.js; InstructorDashboard; native/transport suites; D26 | Existing/missing-day reconciliation, note, failed insert/update/exception/audit rollback, mixed bulk and observed concurrent approve/reject races pass. Live SDK shapes/JWT/API races RT-11/12/13 pending. |
 | INS-011 | Fixed-pending-live-verification | M03/M05; migration gates/native SQL; D01/D24 | Daily/open/Pending unique identities, guarded ID-only clock closure and busy states; real concurrent transitions commit once. Legacy duplicates stop migration unchanged; real preflight/deployment/live RT-08/12/13 pending. |
@@ -216,29 +273,29 @@ remain in `tests/audit-baseline.test.js`; local SQL checks are separate evidence
 | INS-014 | Fixed | package.json/lock; vite.config.js; phase3-production.test.js | Patched compatible tooling, loopback dev/preview; full build/tests on Node 24 and clean Node 22.12; npm audit zero, npm ls all valid. Browser baseline verification pending; ESLint unsupported-major notice documented. |
 | INS-015 | Fixed-pending-live-verification | M04; native SQL/migration gates; D11 | Existing public bucket explicitly private with MIME/10 MiB settings; unrelated bucket retained; missing bucket aborts. Actual object delivery/upload enforcement/live RT-04/15 unverified. |
 | INS-016 | Fixed-pending-live-verification | M03/M05; inspection/03; native SQL/migration gates; D03/D17/D24 | Independent new-row interval/hours/review/reason CHECKs, future-write guards, Pending uniqueness. Equal/negative/ambiguous/excessive/future invalid; explicit overnight/max16h/one-second valid. Historical validation and live RT-09/10/12 pending. |
-| INS-017 | Not-fixed | inspection/02_anomalies.sql; FIXTURES.md; D12 | Pending RT-14; Phase 4; malformed/null/inconsistent scores still accepted. |
-| INS-018 | Not-fixed | 5 baseline numeric cases; inspection/02_anomalies.sql; D06 | Coercion reproduced; pending RT-05/17; Phase 4; no validator/CHECK yet. |
-| INS-019 | Not-fixed | inspection/02_anomalies.sql; D09 | Pending RT-05; Phase 4; lifecycle/assignment partial commits unchanged. |
-| INS-020 | Not-fixed | inspection/02_anomalies.sql; D10 | Pending RT-07; Phase 4; duplicates/partial provisioning unchanged. |
-| INS-021 | Not-fixed | FIXTURES.md; D11 | Pending RT-04/15; Phase 4; no private View/Download UI yet. |
-| INS-022 | Not-fixed | inspection/02_anomalies.sql; D10/D11 | Pending RT-15; Phase 4; upload/version/cleanup races unchanged. |
+| INS-017 | Fixed-pending-live-verification | M06/M09; business.js; workflows.js; EvaluationCriteria; dashboards; Phase 4 suites; D12 | Four integer 1-5 criteria, server 25/35/20/20 score/author and retry key; raw writes denied; null/malformed legacy UI Unavailable. Native idempotency/race/audit failure pass. M09 physical NOT NULL and historical validation deferred; live RT-14 pending. |
+| INS-018 | Fixed-pending-live-verification | M06/M09; business.js; Admin/Instructor/Intern; inspection/04; Phase 4 suites; D06 | Finite >0 <=10000, two-decimal validator and NOT VALID CHECK; no 486 UI fallback, persisted target used. Coercion/DB range/precision tests pass. Historical gate and live RT-05/17 pending. |
+| INS-019 | Fixed-pending-live-verification | M07; workflows.js; AdminDashboard; Phase 4 native/client/gate suites; D09/D32 | Atomic lifecycle/assignment/audit, Active instructor validation, explicit unassignment and history retention; raw protected writes revoked. FK/audit faults, zero rows, incompatible-history abort and assignment/deactivation race pass. Live RT-05 pending; global lock contention unmeasured. |
+| INS-020 | Fixed-pending-live-verification | M08; business.js; AdminDashboard; native/gate/business suites; D10 | Unique requirement identity after duplicate gate; idempotent missing-type attachment preserves evidence/custom rows; partial/complete UI. Concurrent attachment passes. Legacy duplicate disposition and live RT-07 pending. |
+| INS-021 | Fixed-pending-live-verification | M08; documents.js; DocumentActions; dashboards; native/client suites; D11/D34 | Owner/assigned/Admin access RPC + 60-second signed links, version/revision guard, missing/forbidden errors and expiration/regeneration UI. No public fallback. Synthetic contract tests pass; actual bytes/download/expiry/browser RT-04/15 pending; bearer links remain usable until expiry. |
+| INS-022 | Fixed-pending-live-verification | M08; documents.js; DocumentActions; dashboards; native/client suites; D33/D34 | MIME/size checks, server names, busy uploads, immutable versions/events/reviewer/time, expected review version, required note, reconciled cleanup and retry UI. Faults/races and restrictive guards pass; no global document DELETE. Actual Storage metadata/API/byte cleanup and RT-15 pending; unrelated-bucket DELETE ACL needs operator review. |
 | INS-023 | Fixed-pending-live-verification | exports.js; all dashboards; phase3-exports.test.js; PHASE3.md; D28-D30 | Real CSV/XLSX templates, audit/DTR CSV with fresh paginated data and error/count guards; disabled labeled simulations. 30 artifact/transport cases pass. RT-20 actual browser/spreadsheet and >1,000 live synthetic API rows pending; equal-count edits not snapshot-safe. |
-| INS-024 | Not-fixed | Instructor UUID targeting implemented with M01; D07 | Pending RT-16; Phase 4; Intern loading/empty/error message feed still absent. |
-| INS-025 | Not-fixed | baseline chart probe; D02/D04/D05/D13 | Cross-year averaging reproduced; pending RT-17/18; Phase 4; shared metrics not extracted yet. |
+| INS-024 | Fixed-pending-live-verification | AnnouncementsFeed; workflows.js; Instructor/Intern; Phase 4 native/client suites; D07/D22 | Intern loading/empty/error Retry/Refresh feed; UUID options disambiguate company/ID. Synthetic personal/roster/duplicate-name/rename/reassignment scope passes. Real feed/browser/retained-token RT-16 pending. |
+| INS-025 | Fixed-pending-live-verification | hours.js; business.js; metrics.js; all dashboards/exports; Phase 4 business suites; D02/D04/D05/D13/D35 | Shared Manila calendar/week/month/year, year-aware sums, logged/verified and exact-target/current-evidence clearance; computed risk, no fixed pace. Unknown prerequisites block eligibility. Regression cases pass; point-in-time loaded metrics/count-checked reads are not snapshots; live RT-17/18 and Phase 5 refresh/aggregates pending. |
 | INS-026 | Not-fixed | FIXTURES.md | Pending RT-18/19; Phase 5; failed reads still resemble empty data. |
-| INS-027 | Not-fixed | inspection/01_metadata.sql; FIXTURES.md | Pending RT-18; Phase 5; capped totals, pagination/staleness unresolved. |
+| INS-027 | Not-fixed | workflows.js; count-checked Phase 4 prerequisite reads; FIXTURES.md | Bounded keyset reads prevent detected silent truncation for new metrics/feed. Server aggregates, detail/audit pagination, targeted/focus/midnight refresh and indexes remain Phase 5; equal-count edits can evade checks. Pending RT-18. |
 | INS-028 | Not-fixed | FIXTURES.md | Pending RT-19; Phase 5; auth race/missing-profile handling unchanged. |
 | INS-029 | Not-fixed | REPAIR_PROPOSAL.md; D16 | Pending RT-06/21; Phase 6; deletion impact/stale dependent forms unchanged. |
-| INS-030 | Not-fixed | inspection/02_anomalies.sql; D14 | Pending RT-06; Phase 6; section/current-year flows absent. |
+| INS-030 | Not-fixed | M07; Admin assignment section value preserved; inspection/02; D14 | Partial prerequisite: assignment RPC accepts section. Section selection/current academic-year atomic workflow and unique current flag remain Phase 6; live RT-06 pending. |
 | INS-031 | Fixed-pending-live-verification | config.js; supabaseClient.js; App.jsx; .env.example; phase3-config.test.js | 18 synthetic config/SSR cases pass; missing/malformed/private setup no SDK/import crash, safe screen. Real browser/setup/deployment RT-19/22 pending; format guard does not validate key/project or fix Phase 5 auth/offline state. |
-| INS-032 | Not-fixed | M01 structured RPC outcomes; two dependent form handlers awaited; D17 | Partial prerequisite improvement; Phase 5 all-form failure/busy/length/draft handling and RT-08/15/19 pending. |
+| INS-032 | Not-fixed | Structured RPC outcomes; Phase 4 assignment/account/evaluation/upload/review busy/draft paths; D17 | New paths retain drafts on failure and enforce feedback/revision limits. Phase 5 remaining forms, general transport/state handling and RT-08/15/19 pending. |
 | INS-033 | Not-fixed | FIXTURES.md | Pending RT-21 browser/screen-reader; Phase 6; dialog/input/toast issues unchanged. |
 | INS-034 | Not-fixed | baseline contrast probe | Low contrast reproduced; pending RT-21; Phase 6; token changes not made. |
 | INS-035 | Not-fixed | FIXTURES.md | Pending RT-06/21; Phase 6; action terms/colors unchanged. |
 | INS-036 | Not-fixed | before-build sizes above | Pending RT-18/22; Phase 6; eager dashboard/chart chunk remains. |
 | INS-037 | Fixed | package.json/lock; .nvmrc; .github/workflows/verify.yml; README | Node >=22.12 floor; Node 22.12 clean npm ci/full tests/build/audit and Node 24 checks pass. CI 22/24 authored, not remotely executed. Windows short-path alias caveat documented. |
 | INS-038 | Fixed-pending-live-verification | LoginPage.jsx; phase3-production.test.js; .env.example; README; D31 | Explicit development-only demo flag. Actual production build with true flag excludes known demo password/emails. RT-01/20 browser pending; no real-account inventory/rotation, operator must rotate any reuse. |
-| INS-039 | Not-fixed | M01 record RPC cardinality/target checks; baseline zero-row assignment probe | RPC calls reject empty/mismatched outcomes; Admin/alert/master mutations still need assertions. Pending RT-19; Phase 5. |
+| INS-039 | Not-fixed | recordRpc; M07 assignment/account RPC; actual Admin zero-row handler transport test | RPC cardinality/identity and no-success/no-audit/draft preservation pass for assignment. Alert/master UPDATE/DELETE still lack affected-row assertions. Pending RT-19; Phase 5. |
 
 Paths inspection/*, REPAIR_PROPOSAL.md and FIXTURES.md refer to their respective
 subdirectories under supabase/. Dxx refers to DECISIONS.md. No finding is marked
