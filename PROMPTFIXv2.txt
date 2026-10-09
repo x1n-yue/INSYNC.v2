@@ -1,0 +1,189 @@
+You are working on INSync, an internship monitoring system built
+with React, Vite, Tailwind CSS, and Supabase.
+
+Implement focused fixes to the existing system. Preserve its working
+features, design identity, and historical records.
+
+This is a functionality and reliability improvement task, not a
+complete application rewrite or visual redesign.
+
+1. INSPECT THE CURRENT IMPLEMENTATION
+
+Read:
+- FIX_PROGRESS.md
+- README.md
+- DECISIONS.md
+- Relevant application code, migrations, and tests.
+
+Use the latest progress register and actual code to determine what
+remains unfinished. Older audit/checklist documents describe defects
+that may already have been fixed.
+
+Distinguish:
+- Missing functionality.
+- Partially implemented fixes.
+- Implemented functionality awaiting live verification.
+
+Proceed with implementation after inspection. Do not stop at an audit
+or proposed plan.
+
+2. REMOVE CERTIFICATE OF COMPLETION
+
+Remove the Certificate of Completion feature from the application:
+- Remove its cards, buttons, menu entries, previews, and placeholders.
+- Remove certificate generation/download actions and unused code/assets
+  dedicated to that feature.
+- Remove active UI messages promising certificate availability or issuance.
+- Update current feature documentation to reflect its removal.
+
+Preserve:
+- Internship completion/progress indicators.
+- Logged and verified hours.
+- Required-hour targets.
+- Document approval workflows.
+- Clearance eligibility and requirement checks.
+
+Completion and clearance must not imply that a certificate is issued.
+Do not remove historical internship records, document evidence, or
+unrelated completion terminology.
+
+3. FIX AUTHENTICATION AND SESSION RECOVERY
+
+- Show an explicit loading state during session restoration/profile loading.
+- Handle returned errors and thrown exceptions.
+- Prevent stale or out-of-order profile requests from overwriting the
+  current user's state.
+- Provide actionable retry/sign-out states for missing or unavailable profiles.
+- Provide a safe unsupported-role state.
+- Make sign-in and registration submission states recover through finally.
+- Handle email-confirmation requirements accurately.
+- Do not claim account creation solely because signup returned no error.
+- Handle logout failures honestly.
+- Preserve subscription cleanup and existing authorization boundaries.
+
+4. FIX DASHBOARD READ FAILURES
+
+Across Admin, Instructor, and Intern:
+- Distinguish confirmed empty data from unavailable data.
+- Track errors and loading state per relevant resource.
+- Provide retry/refresh controls.
+- Preserve suitable last-known data with a stale indication.
+- Do not turn failed reads into misleading zero totals or empty checklists.
+- Block actions that depend on unavailable prerequisite data.
+- Ensure failed requests cannot leave loading permanently active.
+
+Retain existing working error handling instead of replacing it unnecessarily.
+
+5. IMPROVE DATA COMPLETENESS AND FRESHNESS
+
+- Use authorized server-side aggregates for dashboard totals where appropriate.
+- Add deterministic pagination and counts to remaining detail lists.
+- Allow access to older audit records beyond the initial 50.
+- Keep filters/search consistent with pagination.
+- Refresh affected resources after successful mutations.
+- Handle external updates, window focus, and Manila date rollover appropriately.
+- Prevent outdated requests from replacing newer results.
+- Preserve existing count-checked reads until their replacements are verified.
+- Never claim transactional snapshot consistency without implementing it.
+- Measure query behavior before adding indexes or claiming performance gains.
+
+6. FIX SAVE, DELETE, AND FORM OUTCOMES
+
+- Confirm affected records/returned identities before reporting success.
+- Cover remaining master-data updates/deletes and alert dismissals.
+- Treat missing, forbidden, stale, or already-changed targets accurately.
+- Update local state only after confirmed outcomes.
+- Preserve drafts and selections on failed saves.
+- Close/reset forms only after confirmed success.
+- Add consistent pending states and prevent duplicate submissions.
+- Preserve existing validation and structured RPC outcomes.
+- Reconcile ambiguous responses before retrying operations that may
+  already have committed.
+
+7. MAKE MASTER-DATA DELETION SAFE
+
+For companies, course sections, and academic years:
+- Show referenced-record impact before deletion.
+- Require deliberate confirmation for destructive actions.
+- Follow the documented deletion/reassignment policy.
+- Do not silently choose replacement assignments.
+- Refresh dependent records and edit buffers after success.
+- Prevent deleted IDs from remaining selected or being resubmitted.
+- Handle concurrent changes and foreign-key conflicts clearly.
+- Preserve trusted audit behavior.
+
+8. COMPLETE SECTION AND ACADEMIC-YEAR WORKFLOWS
+
+- Add course-section selection to the Admin intern assignment form.
+- Use the existing controlled assignment workflow.
+- Validate references and display committed values after saving.
+- Implement an authorized atomic current-academic-year operation.
+- Enforce at most one current year, with an explicit setup-required
+  state when none is configured.
+- Prevent deletion of the current year without the required replacement.
+- Define year/cohort relationships before adding year-specific reporting.
+- Preserve history; do not infer or rewrite historical year assignments.
+
+9. IMPROVE ACCESSIBILITY AND LOADING PERFORMANCE
+
+- Add dialog semantics, accessible names, focus containment/return,
+  keyboard support, and viewport scrolling where missing.
+- Associate labels with inputs and name icon-only buttons.
+- Keep feedback accessible and avoid obstructing mobile navigation.
+- Correct unreadable status/action contrast.
+- Lazy-load role dashboards and heavy charts with loading and failure states.
+- Measure bundle changes.
+
+Keep these changes focused; defer a broad cosmetic redesign.
+
+10. PRESERVE EXISTING FUNCTIONALITY
+
+Do not regress:
+- Role/status permissions and roster isolation.
+- Attendance, overnight sessions, and correction approvals.
+- Logged/verified-hour distinctions and clearance rules.
+- Document privacy, versioning, review history, and cleanup.
+- Evaluation scoring and retry/idempotency behavior.
+- Announcements and existing working exports.
+
+Keep currently unavailable imports, reports, backups, and monitoring
+honestly unavailable unless implementing them is explicitly requested.
+
+Do not introduce mock data, fabricated success messages, new business
+rules, or unrelated dependencies/refactoring.
+
+11. DATABASE AND DATA SAFETY
+
+- Keep RLS and controlled server operations as the authorization boundary.
+- Never weaken permissions to make a frontend call succeed.
+- Never expose service-role/private credentials in browser code.
+- Do not read or print .env secrets.
+- Use narrow versioned migrations when required.
+- Do not rerun the legacy destructive schema against existing data.
+- Do not silently repair, delete, normalize, or backfill historical records.
+- Use disposable synthetic data for local verification.
+- Do not apply migrations or mutate a real Supabase project as part
+  of this task; provide deployment and verification instructions.
+
+12. VERIFY AND DELIVER
+
+Run:
+- npm run lint
+- npm run build
+- Relevant existing tests, plus meaningful regression tests for the fixes.
+
+Test failure recovery, stale requests, zero-row mutations, pagination,
+concurrent changes, and draft preservation where applicable.
+
+Inspect representative desktop/mobile flows when browser tools exist.
+Verify that Certificate of Completion entry points are removed.
+
+Clearly separate:
+- Implemented and locally verified changes.
+- Implemented changes awaiting live Supabase/browser verification.
+- Remaining limitations.
+
+Deliver the working changes, a concise summary, verification results,
+and migration/deployment steps. Update the progress documentation to
+match the actual results. Do not mark live checks as passed unless
+they were performed.

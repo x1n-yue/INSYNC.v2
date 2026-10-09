@@ -1,5 +1,10 @@
 # Versioned upgrade path
 
+New empty projects: review/apply `../initial_schema.sql` once, then M01-M09 in
+numeric order before creating accounts. See `../../WEB_SETUP.md`. This does not
+change the inspection, repair-review or deferred validation gates below for
+existing projects. The new initial catalog is locally rehearsed, not live-verified.
+
 Do not run `../schema.sql` or the legacy policy patch to repair an existing project.
 Migrations here are reviewed SQL deliverables; none are executed against a real
 project by this session. Use the ordered gates in `../RUNBOOK.md`. Do not apply

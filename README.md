@@ -7,6 +7,11 @@ The system is not described as secure or production-ready.
 
 ## Local setup
 
+For browser setup, the exact fresh Supabase SQL order, and first-Admin creation,
+see [WEB_SETUP.md](WEB_SETUP.md). New empty projects start with the seed-free
+[initial_schema.sql](supabase/initial_schema.sql), then M01-M09; existing projects
+must use the inspection/upgrade runbook instead.
+
 Use Node **22.12.0 or later** (supported test lines: 22 and 24), npm and the
 committed lockfile. .nvmrc selects Node 22; Windows CI checks 22 and 24.
 
@@ -45,7 +50,9 @@ An operator must approve and apply reviewed migrations in the specified order,
 record hashes, verify the catalog and coordinate client deployment. This session
 never applies SQL to a real project. A genuinely new deployment needs an operator-
 reviewed initial schema without demo seeds plus the reviewed migrations; the
-legacy bootstrap alone is insufficient. No live bootstrap/seed is automated.
+legacy bootstrap alone is insufficient. `supabase/initial_schema.sql` supplies
+that seed-free starting catalog for new empty projects; it still requires M01-M09
+and disposable live checks. No live bootstrap/seed is automated.
 
 Public registration always requests intern and creates intern/Pending. Pending
 users can authenticate but have only own status access. Trusted first-Admin
