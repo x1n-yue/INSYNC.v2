@@ -14,7 +14,7 @@ async function providerFixture() {
 }
 
 describe("fresh Supabase initial schema", () => {
-  it("starts closed and seed-free, accepts M01-M09, and creates Pending interns", async () => {
+  it("starts closed and seed-free, accepts M01-M13, and creates Pending interns", async () => {
     const db = await providerFixture();
     try {
       await db.exec(sql("initial_schema.sql"));
@@ -26,7 +26,7 @@ describe("fresh Supabase initial schema", () => {
       }
       await expect(db.exec("insert into auth.users(id,email) values('00000000-0000-4000-8000-000000000001','test@example.invalid')"))
         .rejects.toThrow(/setup incomplete/);
-      for (const migration of ["M01_authority.sql", "M02_trusted_audit.sql", "M03_attendance_integrity.sql", "M04_private_documents_bucket.sql", "M05_validate_attendance.sql", "M06_rubric_hours.sql", "M07_account_lifecycle.sql", "M08_document_versions.sql", "M09_validate_domain.sql"]) {
+      for (const migration of ["M01_authority.sql", "M02_trusted_audit.sql", "M03_attendance_integrity.sql", "M04_private_documents_bucket.sql", "M05_validate_attendance.sql", "M06_rubric_hours.sql", "M07_account_lifecycle.sql", "M08_document_versions.sql", "M09_validate_domain.sql", "M10_flexible_submissions.sql", "M11_admin_history.sql", "M12_handover_workflows.sql", "M13_coordinator_operations.sql", "M14_last_admin_protection.sql"]) {
         await db.exec(sql(`migrations/${migration}`));
       }
       await db.exec("insert into auth.users(id,email,raw_user_meta_data) values('00000000-0000-4000-8000-000000000001','test@example.invalid','{\"role\":\"admin\"}')");
@@ -35,7 +35,7 @@ describe("fresh Supabase initial schema", () => {
       // Exercise the exact operator instructions too, including their repeat guard.
       await db.exec("alter table auth.users add column email_confirmed_at timestamptz; update auth.users set email_confirmed_at=now()");
       const guide = readFileSync(new URL("../WEB_SETUP.md", import.meta.url), "utf8");
-      const bootstrap = guide.match(/```sql\n([\s\S]*?)```/)[1]
+      const bootstrap = guide.match(/```sql\r?\n([\s\S]*?)```/)[1]
         .replace("YOUR-VERIFIED-AUTH-UUID", "00000000-0000-4000-8000-000000000001");
       await db.exec(bootstrap);
       expect((await db.query("select role,status from public.profiles")).rows).toEqual([{ role: "admin", status: "Active" }]);

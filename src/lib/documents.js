@@ -24,6 +24,9 @@ export async function recoverUpload(client, uploadId) {
 export async function uploadDocument(client, doc, file) {
   const error = validateDocument(file);
   if (error) return { ok: false, error };
+  const legacy = Number(doc.upload_version)===0 && (doc.file_path || doc.file_name || doc.note || doc.reviewed_by || doc.reviewed_at || doc.status!=='Pending');
+  if(legacy && !Object.hasOwn(doc,'legacy_evidence'))
+    return {ok:false,error:'Legacy replacement requires the reviewed M12 database update. Refresh after setup; the original file has not been changed.'};
   const reserved = await recordRpc(client, "stage_document_upload", { p_id: doc.id, p_name: file.name, p_mime: file.type,
     p_size: file.size, p_expected_version: doc.upload_version });
   if (!reserved.ok) return reserved;
@@ -41,14 +44,31 @@ export async function uploadDocument(client, doc, file) {
   return recovery.ok ? recovery : { ...recovery, uploadId: upload.id, error: `${failure}. ${recovery.error}` };
 }
 export async function documentLink(client, doc, download = false) {
-  const access = await recordRpc(client, "document_access", { p_id: doc.id, p_expected_version: doc.upload_version, p_expected_revision: doc.review_revision });
+  const access = await recordRpc(client, doc.legacy_snapshot ? "legacy_document_access" : "document_access", doc.legacy_snapshot ? {p_id:doc.id} : { p_id: doc.id, p_expected_version: doc.upload_version, p_expected_revision: doc.review_revision });
   if (!access.ok) return access;
+  return signedFileLink(client, access.data, download);
+}
+export async function signedFileLink(client, file, download = false) {
   try {
-    const { data, error } = await client.storage.from("documents").createSignedUrl(access.data.file_path, 60,
-      download ? { download: access.data.file_name || "document" } : {});
+    const expiresAt = Date.now() + 60000;
+    const { data, error } = await client.storage.from("documents").createSignedUrl(file.file_path, 60,
+      download ? { download: file.file_name || "document" } : {});
     if (error) throw new Error(error.message);
     const url = new URL(data?.signedUrl);
     if (url.protocol !== "https:" && !(url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname))) throw new Error("Invalid file link");
-    return { ok: true, url: url.href, expiresAt: Date.now() + 60000, error: null };
+    if (Date.now() >= expiresAt) throw new Error("File link expired while preparing it. Request a new link.");
+    return { ok: true, url: url.href, expiresAt, error: null };
   } catch (error) { return { ok: false, url: null, error: error.message || "File link unavailable; retry" }; }
+}
+// Re-read an immutable committed version through RLS before requesting a private
+// Storage link. Historical file access does not change the current requirement.
+export async function historicalDocumentLink(client, doc, download = false) {
+  try {
+    const { data, error } = await client.from("document_versions").select("*").eq("id", doc.history_version_id).single();
+    if (error) throw error;
+    if (!data?.committed_at || data.document_id !== doc.document_id || data.intern_id !== doc.intern_id ||
+      data.version_no !== doc.upload_version || !data.file_path?.startsWith(`${doc.intern_id}/`))
+      throw new Error("Historical evidence unavailable. Refresh and try again.");
+    return signedFileLink(client, data, download);
+  } catch (error) { return { ok: false, url: null, error: error.message || "Historical file unavailable; retry" }; }
 }

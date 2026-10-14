@@ -57,13 +57,20 @@ export function internMetrics({ internId, required, attendance, documents, now =
   const lastDate = dates.at(-1) ?? null;
   const stale = lastDate ? (dateNumber(manilaDate(now)) - dateNumber(lastDate)) / DAY >= 7 : null;
   let risk = "Unknown";
+  const riskReasons = [];
   if (clearanceKnown) {
     if (cleared) risk = "Completed";
-    else if (verified < target && (documents.some((d) => d.status === "Needs Revision") || stale)) risk = "At Risk";
+    else if (verified < target && (documents.some((d) => d.status === "Needs Revision") || stale)) {
+      risk = "At Risk";
+      if (stale) riskReasons.push({ kind: "inactivity", lastDate,
+        message: `Last valid closed attendance: ${lastDate}. At least 7 Manila calendar days without a valid closed record.` });
+      documents.filter(d => d.status === "Needs Revision").forEach(d => riskReasons.push({ kind: "revision", documentId: d.id,
+        message: `Needs Revision: ${d.name || d.doc_type}` }));
+    }
     else if (lastDate) risk = "On Track";
   }
   return { target, logged, verified, progress: target !== null && verified !== null ? Math.min(100, Math.floor(verified / target * 100)) : null,
     remaining: target !== null && verified !== null ? Math.max(0, target - verified) : null,
-    approved, checklist, cleared, risk, lastDate };
+    approved, checklist, cleared, risk, riskReasons, lastDate };
 }
 export const displayHours = (value) => value == null ? "Unavailable" : Number(value).toFixed(2);

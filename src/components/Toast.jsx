@@ -1,5 +1,5 @@
 import { useState, useCallback, createContext, useContext } from "react";
-import { IconCheck, IconAlertTriangle } from "./Icons";
+import { IconCheck, IconAlertTriangle, IconX } from "./Icons";
 
 const ToastContext = createContext({ toast: () => {} });
 
@@ -14,35 +14,31 @@ export function ToastProvider({ children }) {
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3000);
   }, []);
 
+  const dismiss = id => setToasts(current => current.filter(item => item.id !== id));
+
   return (
-    <ToastContext.Provider value={{ toast }}>
+    <ToastContext.Provider value={{ toast, toasts, dismiss }}>
       {children}
-      <div className="fixed bottom-5 right-5 space-y-2 z-50 pointer-events-none">
-        {toasts.map((t) => (
-          <div
-            key={t.id}
-            className="flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-lg text-sm pointer-events-auto"
-            style={{
-              background: t.type === "error" ? "var(--danger-bg)" : t.type === "info" ? "var(--info-bg)" : "#f0fdf4",
-              color: t.type === "error" ? "var(--danger)" : t.type === "info" ? "var(--info)" : "var(--success)",
-              border: `1px solid ${t.type === "error" ? "#fca5a5" : t.type === "info" ? "#bae6fd" : "#86efac"}`,
-              animation: "slideUp 0.2s ease-out",
-            }}
-          >
-            {t.type === "error" ? (
-              <IconAlertTriangle size={14} strokeWidth={2} />
-            ) : (
-              <IconCheck size={14} strokeWidth={2.5} />
-            )}
-            {t.message}
-          </div>
-        ))}
-      </div>
-      <style>{`@keyframes slideUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }`}</style>
+      <ToastViewport />
     </ToastContext.Provider>
   );
 }
 
 export function useToast() {
   return useContext(ToastContext);
+}
+
+export function ToastViewport() {
+  const { toasts = [], dismiss = () => {} } = useContext(ToastContext);
+  return <div className="toast-stack fixed bottom-20 md:bottom-5 right-4 left-4 md:left-auto space-y-2 z-50 pointer-events-none">
+    {toasts.map(t => <div key={t.id} role={t.type === "error" ? "alert" : "status"}
+      className="flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-lg text-sm pointer-events-auto max-w-md break-words"
+      style={{ background: t.type === "error" ? "var(--danger-bg)" : t.type === "info" ? "var(--info-bg)" : "var(--success-bg)",
+        color: t.type === "error" ? "var(--danger)" : t.type === "info" ? "var(--info)" : "var(--success)", border: "1px solid currentColor" }}>
+      {t.type === "error" ? <IconAlertTriangle size={16} /> : <IconCheck size={16} />}
+      <span className="min-w-0 flex-1">{t.message}</span>
+      <button type="button" aria-label="Dismiss notification" onClick={() => dismiss(t.id)} className="px-2 py-1 rounded font-semibold"><IconX size={14} /></button>
+    </div>)}
+  </div>;
+
 }

@@ -1,5 +1,20 @@
 # Read-only inspection pack
 
+`06_coordinator_operations.sql` provides pre/post-M13 announcement and attendance
+RPC signatures, full routine definitions, owner/grants, policies, triggers and
+independent announcement column grants. It reads catalog definitions only, not
+account/attendance records, and rolls back its read-only transaction. Follow
+`../M13_Coordinator_Repair_README.md` for operator steps; no live execution occurred.
+
+`05_consolidated_trigger_compatibility.sql` inventories current INSync/Auth
+triggers and master-data trigger function definitions without reading account
+records or changing anything. Use it for consolidated-update compatibility
+errors such as `academic_years.m11_retain_year`. Its operator-supplied definition
+is now recognized and preserved, but its related academic-year columns/relationships
+remain unreviewed. The inspection includes those column, constraint, index and
+cohort-routine definitions. Review output for embedded function-body secrets
+before sharing it; never drop an unfamiliar protection based on its name.
+
 These files contain read-only inventory, not migrations or repairs. They have
 **not been executed against a real project**. Run `01_metadata.sql` then `02_anomalies.sql` only through
 a trusted operator after confirming the project and snapshot. Both wrap SELECTs

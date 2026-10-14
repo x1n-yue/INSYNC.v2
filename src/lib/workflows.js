@@ -2,13 +2,13 @@ import { recordRpc } from "./authority";
 import { requiredHours, rubricScore } from "./business";
 import { readExportRows } from "./exports";
 
-export async function completeRows(client, table, ownerId) {
+export async function completeRows(client, table, ownerId, columns = "*") {
   const active = async () => {
     const { data, error } = await client.rpc("my_profile");
     if (error || data?.status !== "Active") throw new Error(error?.message || "Account changed; refresh your session");
   };
   await active();
-  const rows = await readExportRows(client, table, "*", ownerId);
+  const rows = await readExportRows(client, table, columns, ownerId);
   await active();
   return rows;
 }

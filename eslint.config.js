@@ -4,10 +4,10 @@ import react from "eslint-plugin-react";
 import hooks from "eslint-plugin-react-hooks";
 
 export default [
-  { ignores: ["node_modules/**", "dist/**", "coverage/**", "**/*.timestamp-*.mjs"] },
+  { ignores: ["node_modules/**", "dist/**", "coverage/**", ".test-postgres/**", ".client-review/**/bundle/**", ".client-review/vite-*-cache/**", ".client-review/audit-before/**", "**/*.timestamp-*.mjs"] },
   js.configs.recommended,
   {
-    files: ["**/*.{js,jsx}"],
+    files: ["**/*.{js,jsx,mjs}"],
     languageOptions: {
       ecmaVersion: "latest",
       sourceType: "module",

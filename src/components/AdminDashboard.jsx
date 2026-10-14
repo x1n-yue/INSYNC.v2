@@ -1,16 +1,23 @@
-import { useEffect, useState } from "react";
+import { cloneElement, isValidElement, useEffect, useId, useRef, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { requestResult } from "../lib/requests";
 import { auditArtifact, downloadArtifact, templateArtifact } from "../lib/exports";
 import { recordRpc } from "../lib/authority";
 import { checklistState } from "../lib/business";
 import { displayHours, internMetrics } from "../lib/metrics";
 import { completeRows, saveAssignment } from "../lib/workflows";
+import { paginate } from "../lib/lists";
+import { Pagination } from "./ListControls";
+import AuditHistory from "./AuditHistory";
+import RequirementManager from "./RequirementManager";
+import { setCurrentYear } from '../lib/handoverWorkflows';
 import Shell from "./Shell";
+import { PageHeader, MetricCard, StatusBadge, LoadingState, ErrorNotice, EmptyState } from "./UI";
 import Modal from "./Modal";
 import { useToast } from "./Toast";
 import {
   IconGrid, IconUsers, IconFolder, IconUpload, IconClipboard, IconShield,
-  IconGradCap, IconBuilding, IconCheck, IconAlertTriangle, IconTrendingUp, IconBarChart,
+  IconGradCap, IconBuilding, IconCheck,
 } from "./Icons";
 
 const navItems = [
@@ -23,15 +30,26 @@ const navItems = [
   { id: "backup", label: "Backup & Security", icon: <IconShield size={15} /> },
 ];
 
+const pageDescriptions = {
+  overview: "Your internship program at a glance. Manage access, assignments, and reference data.",
+  accounts: "Review registered accounts, activate access, and manage roles within assignment restrictions.",
+  interns: "Manage instructors, companies, sections, and saved internship hour targets.",
+  masterdata: "Maintain reference data and inspect archive impact while retaining historical links.",
+  import: "Download blank planning templates. Bulk account imports are unavailable.",
+  auditlogs: "Search the complete authorized activity history and export an audit CSV.",
+  backup: "Review role permissions. Backup status and uptime monitoring are not connected.",
+};
+
 const roleLabel = { admin: "Admin", instructor: "Instructor", intern: "Intern" };
-const roleColors = { Intern: "#d97706", Instructor: "#7c3aed", Admin: "#1a2f5e" };
+const roleColors = { Intern: "#096d68", Instructor: "#315a76", Admin: "#0b1f33" };
 const roles = ["Intern", "Instructor", "Admin"];
 
 function Field({ label, children }) {
+  const id = useId();
   return (
     <div>
-      <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--muted-foreground)" }}>{label}</label>
-      {children}
+      <label htmlFor={id} className="block text-sm font-medium mb-1.5" style={{ color: "var(--muted-foreground)" }}>{label}</label>
+      {isValidElement(children) ? cloneElement(children, { id }) : children}
     </div>
   );
 }
@@ -52,6 +70,20 @@ export default function AdminDashboard({ profile, onLogout }) {
   const [sections, setSections] = useState([]);
   const [years, setYears] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadErrors, setLoadErrors] = useState({});
+  const [accountPage, setAccountPage] = useState(1);
+  const [accountSize, setAccountSize] = useState(25);
+  const [assignmentSearch, setAssignmentSearch] = useState("");
+  const [assignmentPage, setAssignmentPage] = useState(1);
+  const [masterSearch, setMasterSearch] = useState("");
+  const [archiveModal, setArchiveModal] = useState(null);
+  const [archiveConfirmation, setArchiveConfirmation] = useState("");
+  const [masterBusy, setMasterBusy] = useState(false);
+  const [auditRefresh, setAuditRefresh] = useState(0);
+  const [requirementIntern, setRequirementIntern] = useState(null);
+  const [requirementBusy, setRequirementBusy] = useState(false);
+  const [yearChoice, setYearChoice] = useState(null);
+  const loadSequence = useRef(0), dirtyAssignments = useRef(new Set());
 
   // User modal
   const [userModal, setUserModal] = useState({ open: false, editing: null });
@@ -85,40 +117,44 @@ export default function AdminDashboard({ profile, onLogout }) {
   };
 
   const loadAll = async () => {
+    const request = ++loadSequence.current;
     setLoading(true);
     const [
       { data: profiles, error: profilesError },
       { data: auditRows, error: auditError },
-      { data: companyRows },
-      { data: sectionRows },
-      { data: yearRows },
+      { data: companyRows, error: companyError },
+      { data: sectionRows, error: sectionError },
+      { data: yearRows, error: yearError },
       { data: internTableRows, error: internsError },
       { data: docRows, error: docError },
       { data: attendanceRows, error: attendanceError },
     ] = await Promise.all([
       completeRows(supabase, "profiles").then(data => ({ data })).catch(error => ({ data: null, error })),
-      supabase.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(50),
-      supabase.from("companies").select("*").order("name"),
-      supabase.from("course_sections").select("*").order("name"),
-      supabase.from("academic_years").select("*").order("label", { ascending: false }),
+      requestResult(supabase.from("audit_logs").select("*").order("created_at", { ascending: false }).order("id", { ascending: false }).limit(10), "Audit preview retrieval failed"),
+      completeRows(supabase, "companies").then(data => ({ data })).catch(error => ({ data: null, error })),
+      completeRows(supabase, "course_sections").then(data => ({ data })).catch(error => ({ data: null, error })),
+      completeRows(supabase, "academic_years").then(data => ({ data })).catch(error => ({ data: null, error })),
       completeRows(supabase, "interns").then(data => ({ data })).catch(error => ({ data: null, error })),
       completeRows(supabase, "documents").then(data => ({ data })).catch(error => ({ data: null, error })),
       completeRows(supabase, "attendance_logs").then(data => ({ data })).catch(error => ({ data: null, error })),
     ]);
+    if (request !== loadSequence.current) return;
     setUsers(profiles ?? []);
     if (auditError) toast(`Unable to load audit history: ${auditError.message}`, "error");
     setLogs(auditRows ?? []);
-    setCompanies(companyRows ?? []);
-    setSections(sectionRows ?? []);
-    setYears(yearRows ?? []);
+    setLoadErrors({ accounts: profilesError?.message, assignments: internsError?.message, companies: companyError?.message,
+      sections: sectionError?.message, years: yearError?.message, auditPreview: auditError?.message });
+    setCompanies((companyRows ?? []).sort((a,b)=>a.name.localeCompare(b.name)));
+    setSections((sectionRows ?? []).sort((a,b)=>a.name.localeCompare(b.name)));
+    setYears((yearRows ?? []).sort((a,b)=>b.label.localeCompare(a.label)));
     setInternRows(internTableRows ?? []);
     setInternForms(
-      Object.fromEntries(
+      prev => ({ ...Object.fromEntries(
         (internTableRows ?? []).map((r) => [
           r.id,
           { instructor_id: r.instructor_id ?? "", company_id: r.company_id ?? "", section_id: r.section_id ?? "", required_hours: r.required_hours ?? "" },
         ])
-      )
+      ), ...Object.fromEntries(Object.entries(prev).filter(([id]) => dirtyAssignments.current.has(id))) })
     );
     setMetricAttendance(attendanceRows); setMetricDocuments(docRows);
     setMetricsError(profilesError?.message || internsError?.message || docError?.message || attendanceError?.message || null);
@@ -130,6 +166,8 @@ export default function AdminDashboard({ profile, onLogout }) {
 
   useEffect(() => {
     loadAll();
+    const guard=loadSequence;
+    return () => { guard.current++; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -137,8 +175,10 @@ export default function AdminDashboard({ profile, onLogout }) {
     (u) =>
       u.full_name?.toLowerCase().includes(search.toLowerCase()) ||
       u.role?.toLowerCase().includes(search.toLowerCase()) ||
-      u.email?.toLowerCase().includes(search.toLowerCase())
+      u.email?.toLowerCase().includes(search.toLowerCase()) ||
+      u.student_id?.toLowerCase().includes(search.toLowerCase())
   );
+  const accountsPage = paginate(filtered, accountPage, accountSize);
 
   // ── Interns tab: merge `interns` rows with their profile (name/email) ──
   // Only people whose CURRENT role is "intern" belong here — a leftover
@@ -151,13 +191,18 @@ export default function AdminDashboard({ profile, onLogout }) {
       return p && p.role === "intern" ? { ...r, full_name: p.full_name, email: p.email, status: p.status } : null;
     })
     .filter(Boolean)
-    .sort((a, b) => a.full_name.localeCompare(b.full_name));
+    .sort((a, b) => (a.full_name || "").localeCompare(b.full_name || ""));
+  const assignmentsPage = paginate(internsForTab.filter(r => [r.full_name,r.email,companies.find(c=>c.id===r.company_id)?.name,sections.find(s=>s.id===r.section_id)?.name]
+    .some(value=>String(value || "").toLowerCase().includes(assignmentSearch.trim().toLowerCase()))), assignmentPage, 10);
 
-  const updateInternForm = (internId, field, value) =>
+  const updateInternForm = (internId, field, value) => {
+    dirtyAssignments.current.add(internId);
     setInternForms((prev) => ({ ...prev, [internId]: { ...prev[internId], [field]: value } }));
+  };
 
   const applyIntern = (row) => {
     if (!row) return;
+    dirtyAssignments.current.delete(row.id);
     setInternRows(prev => prev.some(r => r.id === row.id) ? prev.map(r => r.id === row.id ? row : r) : [...prev, row]);
     setInternForms(prev => ({ ...prev, [row.id]: { instructor_id: row.instructor_id ?? "", company_id: row.company_id ?? "", section_id: row.section_id ?? "", required_hours: row.required_hours ?? "" } }));
   };
@@ -185,8 +230,9 @@ export default function AdminDashboard({ profile, onLogout }) {
   };
 
   const refreshAudit = async () => {
+    setAuditRefresh(n=>n+1);
     try {
-      const { data, error } = await supabase.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(50);
+      const { data, error } = await supabase.from("audit_logs").select("*").order("created_at", { ascending: false }).order("id", { ascending: false }).limit(10);
       if (error) throw error;
       setLogs(data ?? []);
     } catch (error) {
@@ -248,82 +294,104 @@ export default function AdminDashboard({ profile, onLogout }) {
   const openMasterAdd = (table) => setMasterModal({ table, editId: null, value: "" });
   const openMasterEdit = (table, row, field) => setMasterModal({ table, editId: row.id, value: row[field] });
   const saveMaster = async () => {
+    if (masterBusy) return;
     if (!masterModal || !masterModal.value.trim()) {
       toast("Value cannot be empty", "error");
       return;
     }
     const { table, editId, value } = masterModal;
+    setMasterBusy(true);
+    try {
     const field = table === "academic_years" ? "label" : "name";
     if (editId) {
-      const { error } = await supabase.from(table).update({ [field]: value.trim() }).eq("id", editId);
-      if (error) return toast(error.message, "error");
-      setRowsFor(table, (prev) => prev.map((r) => (r.id === editId ? { ...r, [field]: value.trim() } : r)));
+      const { data, error } = await supabase.from(table).update({ [field]: value.trim() }).eq("id", editId).select().single();
+      if (error || data?.id!==editId) return toast(error?.message || "Entry changed; refresh before retrying", "error");
+      setRowsFor(table, (prev) => prev.map((r) => (r.id === editId ? data : r)));
       toast("Entry updated");
     } else {
       const { data, error } = await supabase.from(table).insert({ [field]: value.trim() }).select().single();
-      if (error) return toast(error.message, "error");
+      if (error || !data?.id) return toast(error?.message || "Entry creation could not be confirmed; refresh before retrying", "error");
       setRowsFor(table, (prev) => [...prev, data]);
       toast("Entry added");
     }
     setMasterModal(null);
     await refreshAudit();
+    } catch (error) { toast(error.message || "Save outcome unknown; refresh before retrying", "error"); }
+    finally { setMasterBusy(false); }
   };
   const removeMaster = async (table, row) => {
-    const { error } = await supabase.from(table).delete().eq("id", row.id);
-    if (error) return toast(error.message, "error");
-    setRowsFor(table, (prev) => prev.filter((r) => r.id !== row.id));
-    toast("Entry removed");
-    await refreshAudit();
+    if(masterBusy)return;
+    setMasterBusy(true);
+    try {
+      const result=await recordRpc(supabase,"admin_master_impact",{p_table:table,p_id:row.id});
+      if(!result.ok)return toast(result.error,"error");
+      setArchiveConfirmation("");setArchiveModal({table,row,...result.data});
+    }finally{setMasterBusy(false);}
+  };
+  const confirmArchive = async () => {
+    if(masterBusy || archiveConfirmation!=="ARCHIVE" || !archiveModal?.can_archive)return;
+    setMasterBusy(true);
+    try {
+      const result=await recordRpc(supabase,"admin_archive_master",{p_table:archiveModal.table,p_id:archiveModal.row.id,p_expected_references:archiveModal.references});
+      if(!result.ok)return toast(`${result.error} Inspect the impact again before retrying.`,"error");
+      setRowsFor(archiveModal.table,prev=>prev.map(r=>r.id===result.data.id?result.data.entry:r));
+      const field=archiveModal.table==="companies"?"company_id":archiveModal.table==="course_sections"?"section_id":null;
+      if(field)setInternForms(prev=>Object.fromEntries(Object.entries(prev).map(([key,form])=>[key,form[field]===result.data.id && internRows.find(r=>r.id===key)?.[field]!==result.data.id ? {...form,[field]:internRows.find(r=>r.id===key)?.[field] || ""} : form])));
+      setArchiveModal(null);toast("Entry archived; existing assignment links and history retained","success");
+      await loadAll();await refreshAudit();
+    }finally{setMasterBusy(false);}
   };
 
 
+  const confirmCurrentYear=async()=>{
+    if(masterBusy||!yearChoice)return;
+    setMasterBusy(true);
+    try {
+      const result=await setCurrentYear(supabase,yearChoice.id,yearChoice.previous);
+      if(!result.ok)return toast(result.error,'error');
+      setYearChoice(null);toast('Current academic year saved; assignments and history retained','success');await loadAll();
+    }finally{setMasterBusy(false);}
+  };
+
   const stats = [
-    { label: "Total Users", value: `${users.length}`, sub: `${users.filter((u) => u.status === "Active").length} active`, icon: <IconUsers size={18} />, iconBg: "#eff6ff", iconColor: "#2563eb" },
-    { label: "Active Interns", value: `${users.filter((u) => u.role === "intern" && u.status === "Active").length}`, sub: "Live count", icon: <IconGradCap size={18} />, iconBg: "#f0fdf4", iconColor: "#16a34a" },
-    { label: "Companies", value: `${companies.length}`, sub: "In directory", icon: <IconBuilding size={18} />, iconBg: "#fefce8", iconColor: "#d97706" },
-    { label: "System Uptime", value: "Unavailable", sub: "Monitoring not connected", icon: <IconCheck size={18} />, iconBg: "#f0fdf4", iconColor: "#16a34a" },
+    { label: "Total Users", value: `${users.length}`, sub: `${users.filter((u) => u.status === "Active").length} active`, icon: <IconUsers size={18} /> },
+    { label: "Active Interns", value: `${users.filter((u) => u.role === "intern" && u.status === "Active").length}`, sub: "Live count", icon: <IconGradCap size={18} /> },
+    { label: "Companies", value: `${companies.length}`, sub: "In directory", icon: <IconBuilding size={18} /> },
+    { label: "System Uptime", value: "Unavailable", sub: "Monitoring not connected", icon: <IconCheck size={18} /> },
   ];
+  const currentYears = years.filter(y=>y.is_current && !y.archived_at);
+  const yearLabel = loadErrors.years ? "Academic year unavailable" : currentYears.length===1 ? currentYears[0].label : currentYears.length ? "Current academic year ambiguous — operator review required" : "Academic year setup required";
 
   return (
     <>
       <Shell userName={profile.full_name} userEmail={profile.email} userRole="Administrator"
         navItems={navItems} activeTab={tab} onTabChange={setTab} onLogout={onLogout}>
-        <div className="p-6 max-w-6xl mx-auto space-y-5">
-          <div className="flex items-start justify-between">
-            <div>
-              <h1 className="text-xl font-bold">{tab === "overview" ? `Hi, ${profile.full_name.split(" ")[0]}!` : navItems.find((n) => n.id === tab)?.label}</h1>
-              <p className="text-sm mt-0.5" style={{ color: "var(--muted-foreground)" }}>
-                {years.find((y) => y.is_current)?.label ?? "Academic Year"}
-              </p>
-            </div>
-            <span className="text-xs px-2.5 py-1 rounded-lg" style={{ background: "var(--secondary)", color: "var(--muted-foreground)" }}>
-              {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "Asia/Manila" })}
-            </span>
-          </div>
+        <div className="dashboard-page space-y-6">
+          <PageHeader eyebrow="Admin workspace" title={tab === "overview" ? `Hi, ${profile.full_name.split(" ")[0]}!` : navItems.find(n => n.id === tab)?.label}
+            description={<>{pageDescriptions[tab]}<span className="block mt-1">{yearLabel}</span></>} date
+            actions={<button className="action-secondary" disabled={loading||masterBusy||accountBusy||requirementBusy||Boolean(savingInternId)||Boolean(attachingDocsId)} onClick={loadAll}>Refresh data</button>} />
 
-          {loading && <div className="text-sm" style={{ color: "var(--muted-foreground)" }}>Loading…</div>}
+          {loading && <LoadingState />}
+          {!loading && Object.entries(loadErrors).filter(([,error])=>error).map(([key,error])=><ErrorNotice key={key} title={`${key} unavailable`} onRetry={loadAll}>{error}</ErrorNotice>)}
 
           {/* ── OVERVIEW ── */}
           {!loading && tab === "overview" && (
             <>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {stats.map((s) => (
-                  <div key={s.label} className="rounded-xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-                    <div className="w-9 h-9 rounded-lg flex items-center justify-center mb-3" style={{ background: s.iconBg, color: s.iconColor }}>{s.icon}</div>
-                    <div className="text-2xl font-bold mb-0.5">{s.value}</div>
-                    <div className="text-xs font-medium" style={{ color: "var(--muted-foreground)" }}>{s.label}</div>
-                    <div className="text-xs mt-0.5" style={{ color: "var(--primary)" }}>{s.sub}</div>
-                  </div>
+                  <MetricCard key={s.label} {...s} value={(loadErrors.accounts && ["Total Users","Active Interns"].includes(s.label)) || (loadErrors.companies && s.label==="Companies") ? "Unavailable" : s.value}
+                    sub={(loadErrors.accounts && ["Total Users","Active Interns"].includes(s.label)) || (loadErrors.companies && s.label==="Companies") ? "Retry the unavailable section above" : s.sub} />
                 ))}
               </div>
               <div className="grid lg:grid-cols-2 gap-4">
-                <div className="rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                <div className="ui-card rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                   <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid var(--border)" }}>
                     <span className="text-sm font-semibold">Recent Accounts</span>
                     <button className="text-xs" style={{ color: "var(--primary)" }} onClick={() => setTab("accounts")}>View all →</button>
                   </div>
+                  {!loadErrors.accounts && users.length === 0 && <EmptyState title="No accounts yet" />}
                   {users.slice(0, 5).map((u) => (
-                    <div key={u.id} className="px-4 py-3 flex items-center gap-3" style={{ borderBottom: "1px solid var(--border)" }}>
+                    <div key={u.id} className="px-4 py-3 flex flex-wrap items-center gap-3" style={{ borderBottom: "1px solid var(--border)" }}>
                       <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 text-white"
                         style={{ background: roleColors[roleLabel[u.role]] ?? "var(--primary)" }}>
                         {u.full_name?.split(" ").map((n) => n[0]).join("").slice(0, 2)}
@@ -336,11 +404,12 @@ export default function AdminDashboard({ profile, onLogout }) {
                     </div>
                   ))}
                 </div>
-                <div className="rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                <div className="ui-card rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                   <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid var(--border)" }}>
                     <span className="text-sm font-semibold">Audit Log — Recent</span>
                     <button className="text-xs" style={{ color: "var(--primary)" }} onClick={() => setTab("auditlogs")}>View all →</button>
                   </div>
+                  {!loadErrors.auditPreview && logs.length === 0 && <EmptyState title="No audit events yet" />}
                   {logs.slice(0, 5).map((l) => (
                     <div key={l.id} className="px-4 py-3 flex gap-3" style={{ borderBottom: "1px solid var(--border)" }}>
                       <span className="font-mono text-xs shrink-0 mt-0.5 w-20" style={{ color: "var(--muted-foreground)" }}>
@@ -359,12 +428,12 @@ export default function AdminDashboard({ profile, onLogout }) {
 
           {/* ── ACCOUNTS ── */}
           {!loading && tab === "accounts" && (
-            <div className="rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-              <div className="px-4 py-3 flex items-center gap-3" style={{ borderBottom: "1px solid var(--border)" }}>
-                <input placeholder="Search users…" value={search} onChange={(e) => setSearch(e.target.value)}
-                  className="flex-1 text-sm px-3 py-1.5 rounded-lg border outline-none"
-                  style={{ borderColor: "var(--border)", background: "var(--muted)", color: "var(--foreground)" }} />
-                <span className="text-xs whitespace-nowrap" style={{ color: "var(--muted-foreground)" }}>
+            <div className="ui-card rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+              <div className="px-4 py-3 flex flex-wrap items-center gap-3" style={{ borderBottom: "1px solid var(--border)" }}>
+                <label className="min-w-0 flex-1 text-xs font-medium">Search accounts by name, role, email or student ID
+                  <input type="search" placeholder="Search accounts…" value={search} onChange={(e) => {setSearch(e.target.value);setAccountPage(1);}} className="form-control" />
+                </label>
+                <span className="text-xs" style={{ color: "var(--muted-foreground)" }}>
                   New accounts are created via Register — edit role/status below
                 </span>
               </div>
@@ -378,7 +447,7 @@ export default function AdminDashboard({ profile, onLogout }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((u) => (
+                  {accountsPage.rows.map((u) => (
                     <tr key={u.id} style={{ borderTop: "1px solid var(--border)" }}>
                       <td className="px-4 py-3 font-medium">{u.full_name}</td>
                       <td className="px-4 py-3">
@@ -386,10 +455,7 @@ export default function AdminDashboard({ profile, onLogout }) {
                       </td>
                       <td className="px-4 py-3 text-xs" style={{ color: "var(--muted-foreground)" }}>{u.email}</td>
                       <td className="px-4 py-3">
-                        <span className="text-xs px-2 py-0.5 rounded-full"
-                          style={{ background: u.status === "Active" ? "var(--success-bg)" : "var(--danger-bg)", color: u.status === "Active" ? "var(--success)" : "var(--danger)" }}>
-                          {u.status}
-                        </span>
+                        <StatusBadge status={u.status} />
                       </td>
                       <td className="px-4 py-3 text-xs" style={{ color: "var(--muted-foreground)" }}>{fmtDate(u.created_at)}</td>
                       <td className="px-4 py-3">
@@ -397,7 +463,7 @@ export default function AdminDashboard({ profile, onLogout }) {
                           <button className="text-xs" style={{ color: "var(--primary)" }} onClick={() => openEdit(u)}>Edit</button>
                           <button className="text-xs" style={{ color: u.status === "Active" ? "var(--danger)" : "var(--success)" }}
                             disabled={accountBusy} onClick={() => deactivate(u)}>
-                            {u.status === "Active" ? "Deactivate" : "Reactivate"}
+                            {u.status === "Active" ? "Deactivate" : u.status === "Pending" ? "Activate" : "Reactivate"}
                           </button>
                         </div>
                       </td>
@@ -406,26 +472,34 @@ export default function AdminDashboard({ profile, onLogout }) {
                 </tbody>
               </table>
               </div>
+              <div className="px-4">
+                {!loadErrors.accounts && !filtered.length && <p className="py-3 text-sm">No accounts match this search.</p>}
+                <label htmlFor="account-size" className="text-sm">Accounts per page<select id="account-size" value={accountSize} onChange={e=>{setAccountSize(Number(e.target.value));setAccountPage(1);}} className="form-control">{[10,25,50,100].map(n=><option key={n}>{n}</option>)}</select></label>
+                {!loadErrors.accounts && <Pagination result={accountsPage} onPage={setAccountPage} label="accounts" />}
+              </div>
             </div>
           )}
 
           {/* ── INTERNS ── */}
           {!loading && tab === "interns" && (
-            <div className="rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+            <div className="ui-card rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
               <div className="px-4 py-3" style={{ borderBottom: "1px solid var(--border)" }}>
                 <span className="text-sm font-semibold">Intern Assignments</span>
+                <label htmlFor="assignment-search" className="block text-sm mt-3">Search name, email, company or section<input id="assignment-search" type="search" value={assignmentSearch} onChange={e=>{setAssignmentSearch(e.target.value);setAssignmentPage(1);}} className="form-control" /></label>
+                {!loadErrors.accounts && !loadErrors.assignments && <Pagination result={assignmentsPage} onPage={setAssignmentPage} label="intern assignments" />}
                 <p className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>
                   Assign each intern to an instructor and company, set their required hours, and attach the standard document checklist.
                 </p>
               </div>
               {metricsError && <p role="alert" className="px-4 py-2 text-xs">Progress unavailable: {metricsError}</p>}
-              {internsForTab.length === 0 && (
+              {!loadErrors.accounts && !loadErrors.assignments && internsForTab.length === 0 && (
                 <div className="px-4 py-8 text-center text-sm" style={{ color: "var(--muted-foreground)" }}>
                   No intern accounts yet — they'll appear here once someone registers with the Intern role.
                 </div>
               )}
+              {!loadErrors.accounts && !loadErrors.assignments && internsForTab.length>0 && assignmentsPage.total===0 && <p className="p-4 text-sm">No intern assignments match this search.</p>}
               <div className="divide-y" style={{ borderColor: "var(--border)" }}>
-                {internsForTab.map((intern) => {
+                {assignmentsPage.rows.map((intern) => {
                   const form = internForms[intern.id] ?? { instructor_id: "", company_id: "", section_id: "", required_hours: intern.required_hours ?? "" };
                   const checklist = docCounts[intern.id] ?? checklistState(null);
                   const metric = internMetrics({ internId: intern.id, required: intern.required_hours,
@@ -442,29 +516,35 @@ export default function AdminDashboard({ profile, onLogout }) {
                           {intern.status}
                         </span>
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                         <Field label="Instructor">
-                          <select value={form.instructor_id} onChange={(e) => updateInternForm(intern.id, "instructor_id", e.target.value)}
+                          <select disabled={savingInternId===intern.id} value={form.instructor_id} onChange={(e) => updateInternForm(intern.id, "instructor_id", e.target.value)}
                             className={inputCls} style={inputStyle}>
                             <option value="">— Unassigned —</option>
                             {instructorOptions.map((i) => <option key={i.id} value={i.id}>{i.full_name}</option>)}
                           </select>
                         </Field>
                         <Field label="Company">
-                          <select value={form.company_id} onChange={(e) => updateInternForm(intern.id, "company_id", e.target.value)}
+                          <select disabled={savingInternId===intern.id} value={form.company_id} onChange={(e) => updateInternForm(intern.id, "company_id", e.target.value)}
                             className={inputCls} style={inputStyle}>
                             <option value="">— None —</option>
-                            {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            {companies.filter(c=>!c.archived_at || c.id===intern.company_id).map((c) => <option key={c.id} value={c.id}>{c.name}{c.archived_at ? " (Archived; existing assignment)" : ""}</option>)}
                           </select>
                         </Field>
                         <Field label="Required Hours">
-                          <input type="number" min="0.01" max="10000" step="0.01" value={form.required_hours}
+                          <input disabled={savingInternId===intern.id} type="number" min="0.01" max="10000" step="0.01" value={form.required_hours}
                             onChange={(e) => updateInternForm(intern.id, "required_hours", e.target.value)}
                             className={inputCls} style={inputStyle} />
+                        </Field>
+                        <Field label="Section">
+                          <select value={form.section_id} disabled={savingInternId===intern.id} onChange={e=>updateInternForm(intern.id,"section_id",e.target.value)} className={inputCls} style={inputStyle}>
+                            <option value="">— Unassigned section —</option>{sections.filter(s=>!s.archived_at || s.id===intern.section_id).map(s=><option key={s.id} value={s.id}>{s.name}{s.archived_at ? " (Archived; existing assignment)" : ""}</option>)}
+                          </select>
                         </Field>
                       </div>
                       <p className="text-xs mt-2">Logged: {displayHours(metric.logged)} hrs | Verified: {displayHours(metric.verified)} hrs | {metric.risk} | Clearance: {metric.cleared === null ? "Unknown" : metric.cleared ? "Eligible" : "Incomplete"}</p>
                       <div className="flex items-center justify-between gap-3 mt-3 flex-wrap">
+                        <button type="button" onClick={() => setRequirementIntern(intern)} className="action-secondary">Manage requirements</button>
                         <button onClick={() => attachStandardDocs(intern.id)} disabled={checklist.complete || !checklist.known || attachingDocsId === intern.id}
                           className="text-xs px-3 py-1.5 rounded-lg font-medium disabled:opacity-60 disabled:cursor-not-allowed"
                           style={{ background: checklist.complete ? "var(--success-bg)" : "var(--secondary)", color: checklist.complete ? "var(--success)" : "var(--primary)" }}>
@@ -485,35 +565,41 @@ export default function AdminDashboard({ profile, onLogout }) {
 
           {/* ── MASTER DATA ── */}
           {!loading && tab === "masterdata" && (
+            <div className="space-y-4">
+              <label htmlFor="master-search" className="block text-sm">Search master data<input id="master-search" type="search" value={masterSearch} onChange={e=>setMasterSearch(e.target.value)} className="form-control" /></label>
+              <p className="text-sm muted-copy">Archive removes entries from new assignment choices and keeps existing links and history. Academic years are master data; no historical year-to-intern relationship exists. Current-year switching remains an operator-managed policy.</p>
             <div className="grid lg:grid-cols-2 gap-4">
               {masterSections.map((section) => (
-                <div key={section.key} className="rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                <div key={section.key} className="ui-card rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                   <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid var(--border)" }}>
                     <span className="text-sm font-semibold">{section.title}</span>
                     <button onClick={() => openMasterAdd(section.table)} className="text-xs px-2.5 py-1 rounded-lg"
                       style={{ background: "var(--secondary)", color: "var(--primary)" }}>+ Add</button>
                   </div>
-                  {section.rows.map((row) => (
-                    <div key={row.id} className="px-4 py-2.5 flex items-center justify-between text-sm" style={{ borderBottom: "1px solid var(--border)" }}>
-                      <span>{row[section.field]}{section.table === "academic_years" && row.is_current ? " (Current)" : ""}</span>
-                      <div className="flex gap-3">
+                  {section.rows.filter(row=>String(row[section.field]).toLowerCase().includes(masterSearch.trim().toLowerCase())).map((row) => (
+                    <div key={row.id} className="px-4 py-2.5 flex flex-wrap gap-2 items-center justify-between text-sm" style={{ borderBottom: "1px solid var(--border)" }}>
+                      <span className="break-words">{row[section.field]}{section.table === "academic_years" && row.is_current ? " (Current)" : ""}{row.archived_at ? " (Archived)" : ""}</span>
+                      <div className="flex flex-wrap gap-3">
+                        {section.table==='academic_years'&&!row.is_current&&<button disabled={masterBusy||Boolean(row.archived_at)||Boolean(loadErrors.years)||years.filter(y=>y.is_current).length>1}
+                          className="text-xs" aria-label={`Set ${row.label} as current year`} onClick={()=>setYearChoice({...row,previous:years.find(y=>y.is_current)?.id||null})}>Set current year</button>}
                         <button className="text-xs" style={{ color: "var(--primary)" }} onClick={() => openMasterEdit(section.table, row, section.field)}>Edit</button>
-                        <button className="text-xs" style={{ color: "var(--danger)" }} onClick={() => removeMaster(section.table, row)}>Remove</button>
+                        <button disabled={masterBusy || Boolean(row.archived_at)} className="text-xs" style={{ color: "var(--danger)" }} onClick={() => removeMaster(section.table, row)}>Inspect archive impact</button>
                       </div>
                     </div>
                   ))}
-                  {section.rows.length === 0 && (
-                    <div className="px-4 py-4 text-xs text-center" style={{ color: "var(--muted-foreground)" }}>No entries yet</div>
+                  {!loadErrors[({companies:"companies",course_sections:"sections",academic_years:"years"})[section.table]] && section.rows.filter(row=>String(row[section.field]).toLowerCase().includes(masterSearch.trim().toLowerCase())).length === 0 && (
+                    <div className="px-4 py-4 text-xs text-center" style={{ color: "var(--muted-foreground)" }}>No matching entries</div>
                   )}
                 </div>
               ))}
+            </div>
             </div>
           )}
 
           {/* ── IMPORT ── */}
           {!loading && tab === "import" && (
             <div className="space-y-4">
-              <div className="rounded-xl p-8 text-center" style={{ background: "var(--card)", border: "2px dashed var(--border)" }}>
+              <div className="ui-card rounded-xl p-8 text-center" style={{ background: "var(--card)", border: "2px dashed var(--border)" }}>
                 <div className="flex justify-center mb-3" style={{ color: "var(--muted-foreground)" }}>
                   <IconUpload size={36} strokeWidth={1.2} />
                 </div>
@@ -523,7 +609,7 @@ export default function AdminDashboard({ profile, onLogout }) {
               </div>
               <div className="grid lg:grid-cols-2 gap-4">
                 {[{ kind: "student", title: "Student planning template" }, { kind: "instructor", title: "Instructor planning template" }].map((t) => (
-                  <div key={t.kind} className="rounded-xl p-4 flex flex-wrap gap-3 items-center justify-between" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                  <div key={t.kind} className="ui-card rounded-xl p-4 flex flex-wrap gap-3 items-center justify-between" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                     <div>
                       <div className="text-sm font-medium">{t.title}</div>
                       <div className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>Blank headers only. Import is unavailable.</div>
@@ -539,32 +625,20 @@ export default function AdminDashboard({ profile, onLogout }) {
 
           {/* ── AUDIT LOGS ── */}
           {!loading && tab === "auditlogs" && (
-            <div className="rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+            <div className="ui-card rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
               <div className="px-4 py-3 flex items-center justify-between" style={{ borderBottom: "1px solid var(--border)" }}>
                 <span className="text-sm font-semibold">System Activity Log</span>
                 <button disabled={exportBusy} className="text-xs px-3 py-1.5 rounded-lg disabled:opacity-50" style={{ background: "var(--secondary)", color: "var(--primary)" }}
-                  onClick={() => requestExport(() => auditArtifact(supabase))}>{exportBusy ? "Preparing CSV…" : "Export audit CSV"}</button>
+                  onClick={() => requestExport(() => auditArtifact(supabase))}>{exportBusy ? "Preparing CSV…" : "Export all audit CSV"}</button>
               </div>
-              <p className="px-4 py-2 text-xs" style={{ color: "var(--muted-foreground)" }}>Export fetches all authorized records, up to 50,000; the displayed list shows only the latest 50. Concurrent changes may require retry.</p>
-              {logs.map((l) => (
-                <div key={l.id} className="px-4 py-3 flex gap-4 items-start" style={{ borderBottom: "1px solid var(--border)" }}>
-                  <span className="font-mono text-xs shrink-0 mt-0.5 w-20" style={{ color: "var(--muted-foreground)" }}>
-                    {new Date(l.created_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Manila" })}
-                  </span>
-                  <div className="w-36 shrink-0 text-xs font-medium truncate">{l.actor_name}</div>
-                  <div className="flex-1">
-                    <div className="text-sm">{l.source === "database-trigger-v2" ? "DB recorded" : "Legacy (provenance unverified)"} | {l.action}</div>
-                    <div className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>{l.detail}</div>
-                  </div>
-                </div>
-              ))}
+              <AuditHistory refreshKey={auditRefresh} />
             </div>
           )}
 
           {/* ── BACKUP ── */}
           {!loading && tab === "backup" && (
             <div className="grid lg:grid-cols-2 gap-4">
-              <div className="rounded-xl p-5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+              <div className="ui-card rounded-xl p-5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                 <h3 className="text-sm font-semibold mb-4">Database Backup</h3>
                 <p className="text-xs mb-4" style={{ color: "var(--muted-foreground)" }}>
                   Backup status is not connected. An authorized operator must verify
@@ -577,12 +651,12 @@ export default function AdminDashboard({ profile, onLogout }) {
                   Manual backup unavailable
                 </button>
               </div>
-              <div className="rounded-xl p-5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+              <div className="ui-card rounded-xl p-5" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                 <h3 className="text-sm font-semibold mb-4">Role Permissions</h3>
                 <div className="space-y-2">
                   {[
                     { role: "System Admin", perms: ["Full access", "User management", "Audit logs"] },
-                    { role: "Instructor", perms: ["Assigned evaluations", "Reports unavailable", "Assigned attendance", "Manage assigned alerts"] },
+                    { role: "Instructor", perms: ["Assigned evaluations", "Assigned report exports", "Assigned attendance", "Manage assigned alerts"] },
                     { role: "Intern", perms: ["Log attendance", "View evaluations", "View progress"] },
                   ].map((r) => (
                     <div key={r.role} className="p-3 rounded-lg" style={{ background: "var(--muted)" }}>
@@ -602,30 +676,35 @@ export default function AdminDashboard({ profile, onLogout }) {
       </Shell>
 
       {/* ── EDIT USER MODAL ── */}
+      {yearChoice&&<Modal title="Set current academic year" busy={masterBusy} onClose={()=>setYearChoice(null)}>
+        <p className="text-sm mb-4">Set {yearChoice.label} as the current year? This changes the displayed year marker. Existing assignments and historical records remain linked as saved.</p>
+        <button disabled={masterBusy} className="action-primary" onClick={confirmCurrentYear}>{masterBusy?'Saving…':'Confirm current year'}</button>
+        <button disabled={masterBusy} className="action-secondary ml-2" onClick={()=>{setYearChoice(null);loadAll();}}>Refresh year list</button>
+      </Modal>}
       {userModal.open && (
-        <Modal title="Edit User" onClose={() => setUserModal({ open: false, editing: null })}>
+        <Modal title="Edit User" busy={accountBusy} onClose={() => setUserModal({ open: false, editing: null })}>
           <div className="space-y-4">
             <Field label="Full Name">
-              <input value={userForm.name} onChange={(e) => setUserForm((f) => ({ ...f, name: e.target.value }))}
+              <input disabled={accountBusy} value={userForm.name} onChange={(e) => setUserForm((f) => ({ ...f, name: e.target.value }))}
                 placeholder="Maria Santos" className={inputCls} style={inputStyle} />
             </Field>
             <Field label="Role">
-              <select value={userForm.role} onChange={(e) => setUserForm((f) => ({ ...f, role: e.target.value }))}
+              <select disabled={accountBusy} value={userForm.role} onChange={(e) => setUserForm((f) => ({ ...f, role: e.target.value }))}
                 className={inputCls} style={inputStyle}>
                 {roles.map((r) => <option key={r}>{r}</option>)}
               </select>
             </Field>
             {userForm.role === "Intern" && (
               <Field label="Company">
-                <select value={userForm.companyId} onChange={(e) => setUserForm((f) => ({ ...f, companyId: e.target.value }))}
+                <select disabled={accountBusy} value={userForm.companyId} onChange={(e) => setUserForm((f) => ({ ...f, companyId: e.target.value }))}
                   className={inputCls} style={inputStyle}>
                   <option value="">— None —</option>
-                  {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {companies.filter(c=>!c.archived_at || c.id===internRows.find(r=>r.id===userModal.editing?.id)?.company_id).map((c) => <option key={c.id} value={c.id}>{c.name}{c.archived_at ? " (Archived)" : ""}</option>)}
                 </select>
               </Field>
             )}
             <Field label="Status">
-              <select value={userForm.status} onChange={(e) => setUserForm((f) => ({ ...f, status: e.target.value }))}
+              <select disabled={accountBusy} value={userForm.status} onChange={(e) => setUserForm((f) => ({ ...f, status: e.target.value }))}
                 className={inputCls} style={inputStyle}>
                 <option>Active</option>
                 <option>Inactive</option>
@@ -637,7 +716,7 @@ export default function AdminDashboard({ profile, onLogout }) {
                 style={{ background: "var(--primary)", color: "#fff" }}>
                 Save Changes
               </button>
-              <button onClick={() => setUserModal({ open: false, editing: null })}
+              <button disabled={accountBusy} onClick={() => setUserModal({ open: false, editing: null })}
                 className="px-4 py-2.5 rounded-lg text-sm"
                 style={{ background: "var(--secondary)", color: "var(--foreground)" }}>Cancel</button>
             </div>
@@ -645,25 +724,39 @@ export default function AdminDashboard({ profile, onLogout }) {
         </Modal>
       )}
 
+      {requirementIntern && <Modal title={`Requirements — ${requirementIntern.full_name}`} busy={requirementBusy} onClose={() => setRequirementIntern(null)}>
+        <RequirementManager internId={requirementIntern.id} onChanged={loadAll} onBusyChange={setRequirementBusy} />
+      </Modal>}
       {/* ── MASTER DATA MODAL ── */}
+      {archiveModal && <Modal title="Archive master entry" busy={masterBusy} onClose={()=>setArchiveModal(null)}>
+        <div className="space-y-3">
+          <p className="text-sm">Entry: <strong>{archiveModal.row.name || archiveModal.row.label}</strong></p>
+          <p className="text-sm">{archiveModal.references} intern assignment references (including retained historical extensions). These links, records and audit history will be preserved. The entry will be excluded from new assignment choices.</p>
+          {!archiveModal.can_archive ? <p role="alert">This entry is already archived or is the current academic year. Configure a replacement current year through the existing operator policy before archiving.</p> : <>
+            <label htmlFor="archive-confirmation" className="block text-sm">Type ARCHIVE to confirm<input id="archive-confirmation" value={archiveConfirmation} disabled={masterBusy} onChange={e=>setArchiveConfirmation(e.target.value)} className="form-control" /></label>
+            <button disabled={masterBusy || archiveConfirmation!=="ARCHIVE"} onClick={confirmArchive} className="action-primary">Confirm archive</button>
+          </>}
+        </div>
+      </Modal>}
       {masterModal && (
         <Modal
           title={masterModal.editId ? "Edit Entry" : "Add Entry"}
           onClose={() => setMasterModal(null)}
           width="380px"
+          busy={masterBusy}
         >
           <div className="space-y-4">
             <Field label="Value">
-              <input value={masterModal.value} onChange={(e) => setMasterModal((m) => ({ ...m, value: e.target.value }))}
+              <input disabled={masterBusy} value={masterModal.value} onChange={(e) => setMasterModal((m) => ({ ...m, value: e.target.value }))}
                 placeholder="Enter value…" className={inputCls} style={inputStyle}
                 onKeyDown={(e) => e.key === "Enter" && saveMaster()} autoFocus />
             </Field>
             <div className="flex gap-2">
-              <button onClick={saveMaster} className="flex-1 py-2.5 rounded-lg text-sm font-semibold"
+              <button disabled={masterBusy} onClick={saveMaster} className="flex-1 py-2.5 rounded-lg text-sm font-semibold"
                 style={{ background: "var(--primary)", color: "#fff" }}>
                 {masterModal.editId ? "Save" : "Add"}
               </button>
-              <button onClick={() => setMasterModal(null)}
+              <button disabled={masterBusy} onClick={() => setMasterModal(null)}
                 className="px-4 py-2.5 rounded-lg text-sm"
                 style={{ background: "var(--secondary)", color: "var(--foreground)" }}>Cancel</button>
             </div>

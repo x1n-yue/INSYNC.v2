@@ -1,6 +1,13 @@
 # Versioned upgrade path
 
-New empty projects: review/apply `../initial_schema.sql` once, then M01-M09 in
+Existing databases can use the guarded manual
+[consolidated updater](../INSync_Consolidated_Update.sql) after reading its
+[prerequisites, coverage and verification guide](../INSync_Consolidated_Update_README.md).
+It installs final M01–M04/M06–M08/M10–M14 contracts in one transaction, preserves
+history, defers M05/M09 and does not mark original migrations applied. Do not
+replay successful original migrations afterward or assume live execution here.
+
+New empty projects: review/apply `../initial_schema.sql` once, then M01-M14 in
 numeric order before creating accounts. See `../../WEB_SETUP.md`. This does not
 change the inspection, repair-review or deferred validation gates below for
 existing projects. The new initial catalog is locally rehearsed, not live-verified.
@@ -21,6 +28,11 @@ files by glob or assume a bootstrap reset is a rollback.
 | 7 | `M07_account_lifecycle.sql` | M06; aborts incompatible role/assignment/missing-extension history unchanged. Atomic Admin lifecycle/assignment, deferred relationship guards; protected raw writes revoked. |
 | 8 | `M08_document_versions.sql` | M07 + exact M04 bucket settings; inspect Storage metadata size/mimetype and existing other-bucket DELETE ACL/policies. Duplicate requirements abort unchanged. Adds unique identity, receipt/version/event tables, constrained Storage cleanup and versioned review/access. Legacy evidence stays version zero. |
 | 9, deferred | `M09_validate_domain.sql` | M06-M08; independently reviewed clean historical targets/rubrics. VALIDATE + evaluation score NOT NULL only; failure retains M06 new-write checks and original data. Independent of the M05 attendance gate. |
+| 10 | `M10_flexible_submissions.sql` | M01–M04/M06–M08, inspected private bucket and JSONB Storage size/mimetype metadata; separate flexible file sets, atomic finalization/versioned review, constrained recovery. No legacy conversion or clearance change; M05/M09 may remain deferred. |
+| 11 | `M11_admin_history.sql` | M10 plus existing M02/M07 helpers; reference-preserving master archival, new-assignment guard and full server audit filtering/pages. No historical deletion or provenance upgrade. |
+| 12 | `M12_handover_workflows.sql` | M11 final contracts/trusted postgres; idempotent Admin custom requirements, assigned-staff verification of valid closed attendance, explicit atomic current-year marker/index, and future first-replacement capture of known raw legacy metadata with scoped file access/cleanup protection. Conflicting years or malformed snapshot definitions/data stop for review. No automatic rollover/verification/backfill/inferred review. Repeatable; verify all four user-facing RPC signatures/grants and replaced private helpers/finalization. |
+| 13 | `M13_coordinator_operations.sql` | Reviewed M01/M02/M03 authority/audit/integrity, enabled trusted audience/audit triggers and reviewed announcement policies. Controlled retry-safe announcement creation/frozen recipients, repaired scoped history SELECT and denied direct writes; independently installs the M12 verification RPC. Rerunnable, no table/data/cohort conversion; [operator steps](../M13_Coordinator_Repair_README.md). |
+| 14 | `M14_last_admin_protection.sql` | Trusted postgres/M07 lifecycle; carries forward the verified existing project's last-Active-Admin safeguard. Prevents deletion/demotion/deactivation of the only active owner account, using the existing lifecycle lock. No role/record backfill. |
 
 M01's preflight stops on unexpected ownership, privileged routines, exposed views,
 extra domain/Auth triggers or restrictive Storage policy drift. Resolve drift in
@@ -55,10 +67,15 @@ and `../tests/PHASE2.md` and `../tests/PHASE4.md`. Phase 2 also starts a fresh l
 race/fault tests. It accepts no external database URL/credentials and removes
 only its verified disposable directory after stopping the process.
 
-M01-M09 are human version labels, not automatic Supabase CLI timestamp discovery.
+M01-M12 are human version labels, not automatic Supabase CLI timestamp discovery.
 Record exact reviewed file hashes in the operator migration ledger; convert each
-to a timestamp filename only as part of a reviewed CLI adoption. Future Phase 5
-aggregate/index work starts at M10; do not reuse a committed version number.
+to a timestamp filename only as part of a reviewed CLI adoption. M10/M11 are now
+allocated to the client PDF improvements; M12 is allocated to handover workflows. Future work starts at M13 or the next
+unused identifier. Do not reuse a committed version number.
+
+See `../../CLIENT_IMPROVEMENTS.md` for exact fresh/existing order, compatibility,
+defaults, local results and live-provider verification prerequisites. The new
+client requires M10 followed by M11 and M12; M01–M11 executable SQL was not rewritten for handover.
 
 Rollback: before commit SQL errors roll back the transaction. After commit disable
 affected operations and apply a reviewed forward repair while keeping authorization

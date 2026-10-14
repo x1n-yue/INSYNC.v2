@@ -23,6 +23,11 @@ in this exact order; proceed only after it succeeds:
 8. [M07_account_lifecycle.sql](supabase/migrations/M07_account_lifecycle.sql)
 9. [M08_document_versions.sql](supabase/migrations/M08_document_versions.sql)
 10. [M09_validate_domain.sql](supabase/migrations/M09_validate_domain.sql)
+11. [M10_flexible_submissions.sql](supabase/migrations/M10_flexible_submissions.sql)
+12. [M11_admin_history.sql](supabase/migrations/M11_admin_history.sql)
+13. [M12_handover_workflows.sql](supabase/migrations/M12_handover_workflows.sql)
+14. [M13_coordinator_operations.sql](supabase/migrations/M13_coordinator_operations.sql)
+15. [M14_last_admin_protection.sql](supabase/migrations/M14_last_admin_protection.sql)
 
 The initial file creates the 12 baseline tables and a private documents bucket.
 It contains no demo records, accounts or reset statements. It refuses existing
@@ -53,8 +58,12 @@ Get the **Project URL** and **publishable key** from the project's Connect panel
 or API settings. A legacy **anon** key also works. Never put a secret or
 service-role key in the website.
 
-Edit the existing `.env` in the project root. If it is missing, copy `.env.example`
-to `.env` first. Set these exact variable names:
+Edit the existing `.env` in the project root. If the app is already configured on
+your client's laptop, copy that project's `.env` into this project's root and
+restart Vite. These settings are excluded from Git and do not come with a clone.
+Otherwise, copy `.env.example` to `.env` first and fill in the public values from
+the Supabase dashboard. The template has blank values and cannot connect by
+itself. Set these exact variable names:
 
 ```dotenv
 VITE_SUPABASE_URL=https://YOUR-PROJECT-REF.supabase.co
@@ -144,13 +153,20 @@ build locally and is not a production hosting service.
 
 ## Verification and limits
 
-The new initial schema was tested with all nine actual migration files using
+The new initial schema was tested with all eleven actual migration files using
 local PGlite and synthetic provider tables. Tests cover empty initial data,
 closed initial API access, blocked early signup, Pending intern signup after
 migrations, and refusal/preservation of existing tables, accounts and buckets.
 This does not verify a live Supabase project, Auth email delivery, PostgREST or
 Storage file delivery. Follow the disposable-project checks in the runbook
 before relying on the deployment. No SQL was applied to a remote project.
+
+Flexible submissions use separate versioned file sets, with 1–10 files and a
+50 MiB total bound; each PDF/JPEG/PNG remains limited to 10 MiB. They do not
+replace the legacy four-standard-type clearance checklist. Master-data removal
+archives entries while preserving existing assignment links/history. Read
+[CLIENT_IMPROVEMENTS.md](CLIENT_IMPROVEMENTS.md) before reviewing M10/M11 and
+coordinating this client deployment.
 
 Provider references: [Supabase React setup](https://supabase.com/docs/guides/getting-started/quickstarts/reactjs),
 [Auth redirect URLs](https://supabase.com/docs/guides/auth/redirect-urls),

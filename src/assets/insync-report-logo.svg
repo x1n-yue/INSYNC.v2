@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 56">
+  <rect x="1" y="8" width="40" height="40" rx="12" fill="#e8f3f1" stroke="#c9e3e0"/>
+  <g transform="translate(21 28) rotate(-35)" fill="none" stroke-width="2.5">
+    <rect x="-10" y="-9" width="11" height="18" rx="5.5" stroke="#0e837d"/>
+    <rect x="0" y="-9" width="11" height="18" rx="5.5" stroke="#0b1f33"/>
+  </g>
+  <text x="53" y="37" font-family="Arial,sans-serif" font-weight="700" font-size="32" fill="#0b1f33">IN<tspan fill="#0e837d">Sync</tspan></text>
+</svg>

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
-import { documentLink } from "../lib/documents";
+import { documentLink, historicalDocumentLink } from "../lib/documents";
+import { submissionFileLink } from "../lib/submissions";
+import { IconEye, IconFileDown } from "./Icons";
 
 export default function DocumentActions({ doc }) {
   const [busy, setBusy] = useState(false);
@@ -12,7 +14,7 @@ export default function DocumentActions({ doc }) {
     guard.current += 1;
     setLink(null); setError(""); setBusy(false);
     return () => { guard.current += 1; };
-  }, [doc.id, doc.upload_version, doc.review_revision, doc.file_path]);
+  }, [doc.id, doc.upload_version, doc.review_revision, doc.file_path, doc.version_id, doc.history_version_id]);
   useEffect(() => {
     if (!link) return;
     const timer = setTimeout(() => { setLink(null); setError("Link expired. Request a new link."); }, Math.max(0, link.expiresAt - Date.now()));
@@ -23,7 +25,7 @@ export default function DocumentActions({ doc }) {
     const request = ++sequence.current;
     setBusy(true); setLink(null); setError("");
     try {
-      const result = await documentLink(supabase, doc, download);
+      const result = await (doc.history_version_id ? historicalDocumentLink : doc.version_id ? submissionFileLink : documentLink)(supabase, doc, download);
       if (request !== sequence.current) return;
       if (result.ok) setLink({ ...result, download }); else setError(result.error);
     } catch (failure) {
@@ -32,11 +34,12 @@ export default function DocumentActions({ doc }) {
   };
   return <div className="text-xs mt-2 space-y-1">
     <div className="flex gap-2">
-      <button disabled={busy || !doc.file_path} onClick={() => prepare(false)} className="px-2 py-1 rounded border disabled:opacity-50">{busy ? "Preparing..." : "View file"}</button>
-      <button disabled={busy || !doc.file_path} onClick={() => prepare(true)} className="px-2 py-1 rounded border disabled:opacity-50">Download file</button>
+      <button disabled={busy || !doc.file_path} onClick={() => prepare(false)} className="action-secondary inline-flex items-center gap-2"><IconEye size={14} />{busy ? "Preparing..." : "View file"}</button>
+      <button disabled={busy || !doc.file_path} onClick={() => prepare(true)} className="action-secondary inline-flex items-center gap-2"><IconFileDown size={14} />Download file</button>
     </div>
-    {link && <p><a href={link.url} target="_blank" rel="noopener noreferrer" className="underline">{link.download ? "Download prepared file" : "Open prepared file"}</a> · Link expires in 60 seconds. Request a new link if access fails.</p>}
+    {link && <p><a href={link.url} target="_blank" rel="noopener noreferrer" className="underline">{link.download ? "Download prepared file" : "Open prepared file"}</a> · Short-lived link (up to 60 seconds). Request a new link if access fails.</p>}
     {error && <p role="alert">{error}</p>}
+    {!doc.file_path && <p className="muted-copy">File unavailable</p>}
     {doc.file_path && doc.upload_version === 0 && <p>Legacy evidence: resubmission required before approval or clearance.</p>}
   </div>;
 }

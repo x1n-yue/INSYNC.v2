@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AreaChart,
   Area,
@@ -9,17 +9,25 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { supabase } from "../lib/supabaseClient";
+import { requestResult } from "../lib/requests";
+import DocumentHistory from "./DocumentHistory";
 import { manilaDate, recordRpc } from "../lib/authority";
 import { elapsedSession, formatBusinessDate, formatClockTime, isOpenSession } from "../lib/attendance";
 import { downloadArtifact, dtrArtifact } from "../lib/exports";
 import { evaluationResult } from "../lib/business";
+import { attendanceEvidence } from "../lib/hours";
 import { chartHours, displayHours, filterAttendance, internMetrics } from "../lib/metrics";
 import { completeRows } from "../lib/workflows";
+import { dateRange, filterEvaluations } from "../lib/lists";
+import DateFilters from "./DateFilters";
+import Submissions from "./Submissions";
 import { recoverUpload, uploadDocument } from "../lib/documents";
 import DocumentActions from "./DocumentActions";
 import EvaluationCriteria from "./EvaluationCriteria";
 import AnnouncementsFeed from "./AnnouncementsFeed";
+import ReportsPanel from "./ReportsPanel";
 import Shell from "./Shell";
+import { PageHeader, MetricCard, StatusBadge, LoadingState, ErrorNotice, EmptyState } from "./UI";
 import Modal from "./Modal";
 import { useToast } from "./Toast";
 import {
@@ -29,8 +37,6 @@ import {
   IconFileDown,
   IconFolder,
   IconCheck,
-  IconTrendingUp,
-  IconCalendar,
   IconAward,
   IconAlertTriangle,
   IconUpload,
@@ -51,40 +57,19 @@ function formatTime(d) {
   return formatClockTime(d);
 }
 
-function StatCard({ icon, iconBg, iconColor, label, value, sub }) {
-  return (
-    <div className="rounded-xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-      <div className="w-9 h-9 rounded-lg flex items-center justify-center mb-3" style={{ background: iconBg, color: iconColor }}>
-        {icon}
-      </div>
-      <div className="text-2xl font-bold mb-0.5" style={{ color: "var(--foreground)" }}>{value}</div>
-      <div className="text-xs font-medium mb-0.5" style={{ color: "var(--muted-foreground)" }}>{label}</div>
-      <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>{sub}</div>
-    </div>
-  );
-}
-
-function DocStatusBadge({ status }) {
-  const map = {
-    Approved: { bg: "var(--success-bg)", color: "var(--success)" },
-    Pending: { bg: "var(--warning-bg)", color: "var(--warning)" },
-    "Needs Revision": { bg: "var(--danger-bg)", color: "var(--danger)" },
-  };
-  return (
-    <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={map[status]}>
-      {status}
-    </span>
-  );
-}
-
 const todayStr = () => manilaDate();
 const inputCls = "w-full text-sm py-2 px-3 rounded-lg border outline-none";
 const inputStyle = { borderColor: "var(--border)", background: "var(--card)", color: "var(--foreground)" };
 
 export default function InternDashboard({ profile, onLogout }) {
+  const [evalPeriod, setEvalPeriod] = useState("all");
+  const [evalStart, setEvalStart] = useState("");
+  const [evalEnd, setEvalEnd] = useState("");
+  const [evalError, setEvalError] = useState("");
   const { toast } = useToast();
   const [tab, setTab] = useState("dashboard");
   const [loading, setLoading] = useState(true);
+  const loadSequence = useRef(0), refreshing = useRef(false), writing = useRef(false);
   const [exportBusy, setExportBusy] = useState(false);
   const exportDtr = async () => {
     if (exportBusy) return;
@@ -110,7 +95,9 @@ export default function InternDashboard({ profile, onLogout }) {
   const [dtr, setDtr] = useState([]); // attendance_logs, newest first
   const [evaluationList, setEvaluationList] = useState([]);
   const [exceptions, setExceptions] = useState([]);
+  const [correctionsError, setCorrectionsError] = useState("");
   const [docs, setDocs] = useState([]);
+  const [requirementFilter, setRequirementFilter] = useState('');
   const [weekView, setWeekView] = useState("Weekly");
   const [showWeekPicker, setShowWeekPicker] = useState(false);
   const [dtrFilter, setDtrFilter] = useState("all");
@@ -128,46 +115,54 @@ export default function InternDashboard({ profile, onLogout }) {
   // Document upload
   const fileInputRefs = useRef({});
 
-  const loadAll = async () => {
-    setLoading(true);
+  writing.current = clockBusy || correctionBusy || uploadBusy !== null || recoveryBusy;
+  const loadAll = useCallback(async ({ background = false } = {}) => {
+    if (background && (refreshing.current || writing.current)) return;
+    const request=++loadSequence.current; refreshing.current=true;
+    if(!background) setLoading(true);
     const capture = table => completeRows(supabase, table, profile.id).then(data => ({ data })).catch(error => ({ data: null, error }));
-    const [{ data: internRow, error: internError }, { data: attendanceRows, error: attendanceError }, { data: evalRows }, { data: exceptionRows }, { data: docRows, error: docError }, { data: openRow, error: openError }] =
+    const [{ data: internRow, error: internError }, { data: attendanceRows, error: attendanceError }, { data: evalRows, error: evaluationsError }, { data: exceptionRows, error: exceptionError }, { data: docRows, error: docError }, { data: openRow, error: openError }] =
       await Promise.all([
-        supabase
+        requestResult(supabase
           .from("interns")
-          .select("instructor_id, required_hours, companies(name)")
+          .select("instructor_id, section_id, required_hours, companies(name), course_sections(name)")
           .eq("id", profile.id)
-          .maybeSingle(),
+          .maybeSingle(), "Intern assignment retrieval failed"),
         capture("attendance_logs"),
         capture("evaluations"),
-        supabase.from("attendance_exceptions").select("*").eq("intern_id", profile.id).order("created_at", { ascending: false }),
+        requestResult(supabase.from("attendance_exceptions").select("*").eq("intern_id", profile.id).order("created_at", { ascending: false }), "Correction history retrieval failed"),
         capture("documents"),
-        supabase.from("attendance_logs").select("*").eq("intern_id", profile.id).is("time_out", null).maybeSingle(),
+        requestResult(supabase.from("attendance_logs").select("*").eq("intern_id", profile.id).is("time_out", null).maybeSingle(), "Open session retrieval failed"),
       ]);
     const nameIds = [...new Set([internRow?.instructor_id, ...(evalRows ?? []).map((e) => e.evaluator_id)].filter(Boolean))];
-    const { data: nameRows, error: nameError } = await supabase.rpc("related_profile_names", { p_ids: nameIds });
+    const { data: nameRows, error: nameError } = await requestResult(supabase.rpc("related_profile_names", { p_ids: nameIds }), "Related names retrieval failed");
+    if(request!==loadSequence.current) return;
     if (nameError) {
       toast(`Unable to load related names: ${nameError.message}`, "error");
-      setLoading(false);
-      return;
     }
     const names = Object.fromEntries((nameRows ?? []).map((p) => [p.id, { full_name: p.full_name }]));
     setInternInfo(internRow ? { ...internRow, profiles: names[internRow.instructor_id] } : null);
-    setClockLoadError(openError?.message ?? null);
+    setClockLoadError(openError?.message || attendanceError?.message || null);
     setMetricsError(internError?.message || attendanceError?.message || docError?.message || null);
     setAttendanceKnown(Array.isArray(attendanceRows)); setDocumentsKnown(Array.isArray(docRows));
     const history = [...(attendanceRows ?? [])].sort((a,b) => b.log_date.localeCompare(a.log_date) || b.id.localeCompare(a.id));
     setDtr(openRow && !history.some((row) => row.id === openRow.id) ? [openRow, ...history] : history);
-    setEvaluationList([...(evalRows ?? [])].sort((a,b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id)).map((e) => ({ ...e, profiles: names[e.evaluator_id] })));
+    setEvalError(evaluationsError?.message || "");
+    setEvaluationList([...(evalRows ?? [])].sort((a,b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")) || b.id.localeCompare(a.id)).map((e) => ({ ...e, profiles: names[e.evaluator_id] })));
+    setCorrectionsError(exceptionError?.message || "");
     setExceptions(exceptionRows ?? []);
     setDocs(docRows ?? []);
+    refreshing.current=false;
     setLoading(false);
-  };
+  }, [profile.id, toast]);
 
   useEffect(() => {
-    loadAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile.id]);
+    const sequence=loadSequence; loadAll();
+    const refresh=()=>{if(document.visibilityState==='visible') loadAll({background:true});};
+    const timer=setInterval(refresh,60000);
+    window.addEventListener('focus',refresh); document.addEventListener('visibilitychange',refresh);
+    return()=>{sequence.current++;refreshing.current=false;clearInterval(timer);window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh);};
+  }, [loadAll]);
 
   const todayRow = dtr.find((d) => d.time_in && !d.time_out) ?? dtr.find((d) => d.log_date === todayStr());
   const clockInDate = isOpenSession(todayRow) ? new Date(todayRow.clocked_in_at) : null;
@@ -192,6 +187,7 @@ export default function InternDashboard({ profile, onLogout }) {
     try {
       const result = await recordRpc(supabase, "clock_in");
       if (!result.ok) return toast(result.error, "error");
+      loadSequence.current++; refreshing.current=false; setLoading(false);
       setDtr((prev) => [result.data, ...prev]);
       toast("Clocked in at " + result.data.time_in, "success");
     } finally { setClockBusy(false); }
@@ -203,6 +199,7 @@ export default function InternDashboard({ profile, onLogout }) {
     try {
       const result = await recordRpc(supabase, "clock_out", { p_id: todayRow.id, p_accomplishment: accomp });
       if (!result.ok) { toast(result.error, "error"); return result; }
+      loadSequence.current++; refreshing.current=false; setLoading(false);
       setDtr((prev) => prev.map((d) => d.id === result.data.id ? result.data : d));
       toast(`Clocked out — ${Number(result.data.hours).toFixed(2)} hrs logged`, "success");
       return result;
@@ -222,13 +219,14 @@ export default function InternDashboard({ profile, onLogout }) {
     });
     setCorrectionBusy(false);
     if (!result.ok) return toast(result.error, "error");
+    loadSequence.current++; refreshing.current=false; setLoading(false);
     setExceptions((prev) => [result.data, ...prev]);
     setExForm({ date: "", endDate: "", claimedIn: "", claimedOut: "", reason: "" });
     toast("Exception request submitted — awaiting instructor review", "info");
   };
 
   const refreshRecovery = async () => {
-    const { data, error } = await supabase.rpc("unfinished_document_uploads");
+    const { data, error } = await requestResult(supabase.rpc("unfinished_document_uploads"), "Upload recovery retrieval failed");
     if (error) toast("Upload recovery unavailable: " + error.message, "error");
     else setRecoveryRows(data ?? []);
   };
@@ -241,6 +239,7 @@ export default function InternDashboard({ profile, onLogout }) {
     try {
       const result = await uploadDocument(supabase, doc, file);
       if (!result.ok) { toast(result.error, "error"); await refreshRecovery(); return result; }
+      loadSequence.current++; refreshing.current=false; setLoading(false);
       setDocs(prev => prev.map(d => d.id === result.data.id ? result.data : d));
       toast("Upload finalized; pending review", "info"); return result;
     } finally { setUploadBusy(null); }
@@ -263,14 +262,16 @@ export default function InternDashboard({ profile, onLogout }) {
   const remainingHours = metric.remaining;
   const filteredDtr = filterAttendance(dtr, dtrFilter);
   const latestEval = evaluationList[0];
+  const evaluationRange = dateRange(evalPeriod, evalStart, evalEnd);
+  const filteredEvaluations = filterEvaluations(evaluationList, evaluationRange);
   const docApprovedCount = metric.approved;
   const clearanceReady = metric.cleared;
   const weeklyDataSets = useMemo(() => ({ Weekly: chartHours(dtr, "week"), Monthly: chartHours(dtr, "month"), Yearly: chartHours(dtr, "year"), "All Time": chartHours(dtr, "all") }), [dtr]);
 
   const stats = [
-    { icon: <IconClock size={18} />, iconBg: "#eff6ff", iconColor: "#2563eb", label: "Logged Hours", value: displayHours(hoursRendered), sub: `Verified: ${displayHours(metric.verified)} / ${hoursRequired ?? "Unavailable"} required` },
-    { icon: <IconCheck size={18} />, iconBg: "#f0fdf4", iconColor: "#16a34a", label: "Completion", value: progress === null ? "Unavailable" : `${progress}%`, sub: `Verified progress | ${metric.risk}` },
-    { icon: <IconAward size={18} />, iconBg: "#fefce8", iconColor: "#d97706", label: "Latest Score", value: evaluationResult(latestEval) !== null ? `${evaluationResult(latestEval)}/100` : "—", sub: "Most recent evaluation" },
+    { icon: <IconClock size={18} />, label: "Logged Hours", value: displayHours(hoursRendered), sub: `Verified: ${displayHours(metric.verified)} / ${hoursRequired ?? "Unavailable"} required` },
+    { icon: <IconCheck size={18} />, label: "Completion", value: progress === null ? "Unavailable" : `${progress}%`, sub: `Verified progress | ${metric.risk}` },
+    { icon: <IconAward size={18} />, label: "Latest Score", value: evalError ? "Unavailable" : evaluationResult(latestEval) !== null ? `${evaluationResult(latestEval)}/100` : "—", sub: "Most recent evaluation" },
   ];
 
   return (
@@ -283,31 +284,37 @@ export default function InternDashboard({ profile, onLogout }) {
       onTabChange={setTab}
       onLogout={onLogout}
     >
-      <div className="p-6 space-y-5">
-        {metricsError && <p role="alert" className="text-sm">Progress unavailable: {metricsError} <button onClick={loadAll} className="underline">Retry</button></p>}
-        {loading && <div className="text-sm" style={{ color: "var(--muted-foreground)" }}>Loading…</div>}
+      <div className="dashboard-page space-y-6">
+        {metricsError && <ErrorNotice title="Progress unavailable" onRetry={loadAll}>{metricsError}</ErrorNotice>}
+        {loading && <LoadingState />}
+
+        {!loading && correctionsError && tab === "attendance" && <ErrorNotice title="Correction requests unavailable" onRetry={loadAll}>{correctionsError}</ErrorNotice>}
 
         {/* ── DASHBOARD ─────────────────────────────────────────────────── */}
         {!loading && tab === "dashboard" && (
           <>
-            <div>
-              <h1 className="text-xl font-bold" style={{ color: "var(--foreground)" }}>
-                Hi, {profile.full_name.split(" ")[0]}!
-              </h1>
-              <p className="text-sm mt-0.5" style={{ color: "var(--muted-foreground)" }}>
-                {profile.organization ?? "—"}{internInfo?.companies?.name ? ` — ${internInfo.companies.name}` : ""}
-              </p>
-            </div>
+            <PageHeader eyebrow="Intern workspace" title={`Hi, ${profile.full_name.split(" ")[0]}!`}
+              description={`${profile.organization ?? "Your internship workspace"}${internInfo?.companies?.name ? ` - ${internInfo.companies.name}` : ""}`} date />
 
             <AnnouncementsFeed />
+            <div className="surface-card grid sm:grid-cols-3 gap-3 text-sm">
+              <div><span className="muted-copy">Assigned instructor</span><p>{internInfo?.profiles?.full_name || "Unassigned / unavailable"}</p></div>
+              <div><span className="muted-copy">Company</span><p>{internInfo?.companies?.name || "Unassigned / unavailable"}</p></div>
+              <div><span className="muted-copy">Section</span><p>{internInfo?.course_sections?.name || "Unassigned / unavailable"}</p></div>
+            </div>
+            <div className="surface-card flex flex-wrap items-center justify-between gap-3">
+              <div><h2 className="font-semibold">Today’s Attendance</h2><p className="text-sm muted-copy">{clockLoadError ? "Attendance state unavailable" : isClockedIn ? `Session open · ${elapsed}` : todayRow?.time_out ? "Today’s session completed" : "Ready to clock in"}</p></div>
+              <button onClick={()=>isClockedIn ? setShowAccomplModal(true) : handleClockIn()} disabled={clockBusy || Boolean(clockLoadError) || Boolean(todayRow?.time_out)} className="action-primary">{clockBusy ? "Saving…" : isClockedIn ? "Clock Out" : todayRow?.time_out ? "Day Completed" : "Clock In"}</button>
+              <button onClick={()=>setTab("attendance")} className="action-secondary">View attendance</button>
+            </div>
             <p className="text-xs">Clearance: {clearanceReady === null ? "Unknown" : clearanceReady ? "Eligible" : "Incomplete"} | Standard requirements: {metric.checklist.present}/4</p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {stats.map((s) => <StatCard key={s.label} {...s} />)}
+              {stats.map((s) => <MetricCard key={s.label} {...s} />)}
             </div>
 
             <div className="grid lg:grid-cols-5 gap-4">
               <div className="lg:col-span-3 space-y-4">
-                <div className="rounded-xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                <div className="ui-card rounded-xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="text-sm font-semibold">{weekView} Logged Hours (sum)</h2>
                     <div className="relative">
@@ -332,7 +339,7 @@ export default function InternDashboard({ profile, onLogout }) {
                       )}
                     </div>
                   </div>
-                  <ResponsiveContainer width="100%" height={160}>
+                  {attendanceKnown ? <ResponsiveContainer width="100%" height={160}>
                     <AreaChart data={weeklyDataSets[weekView]} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                       <defs>
                         <linearGradient id="hoursGrad" x1="0" y1="0" x2="0" y2="1">
@@ -350,10 +357,10 @@ export default function InternDashboard({ profile, onLogout }) {
                       <Area type="monotone" dataKey="hours" stroke="var(--primary)" strokeWidth={2} fill="url(#hoursGrad)"
                         dot={{ r: 3, fill: "var(--primary)", strokeWidth: 0 }} activeDot={{ r: 5 }} />
                     </AreaChart>
-                  </ResponsiveContainer>
+                  </ResponsiveContainer> : <ErrorNotice title="Attendance chart unavailable" onRetry={loadAll} />}
                 </div>
 
-                <div className="rounded-xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                <div className="ui-card rounded-xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-sm font-semibold">Overall Progress</span>
                     <span className="text-sm font-bold" style={{ color: "var(--primary)" }}>{progress === null ? "Unavailable" : `${progress}%`}</span>
@@ -373,9 +380,7 @@ export default function InternDashboard({ profile, onLogout }) {
                   <span className="text-sm font-semibold">Recent Evaluations</span>
                 </div>
                 <div className="overflow-y-auto" style={{ maxHeight: "380px" }}>
-                  {evaluationList.length === 0 && (
-                    <div className="px-4 py-8 text-center text-sm" style={{ color: "var(--muted-foreground)" }}>No evaluations yet</div>
-                  )}
+                  {evalError ? <ErrorNotice title="Evaluations unavailable" onRetry={loadAll}>{evalError}</ErrorNotice> : evaluationList.length === 0 && <EmptyState title="No evaluations yet" />}
                   {evaluationList.map((ev) => (
                     <div key={ev.id} className="px-4 py-3" style={{ borderBottom: "1px solid var(--border)" }}>
                       <div className="flex items-start justify-between gap-2">
@@ -410,14 +415,9 @@ export default function InternDashboard({ profile, onLogout }) {
         {/* ── ATTENDANCE ────────────────────────────────────────────────── */}
         {!loading && tab === "attendance" && (
           <>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h1 className="text-xl font-bold">My Attendance</h1>
-                <p className="text-sm mt-0.5" style={{ color: "var(--muted-foreground)" }}>
-                  {internInfo?.companies?.name ?? "—"} · Instructor: {internInfo?.profiles?.full_name ?? "—"}
-                </p>
-              </div>
-              <button
+            <PageHeader eyebrow="Intern workspace" title="My Attendance"
+              description={`${internInfo?.companies?.name ?? "Company unassigned / unavailable"} - Instructor: ${internInfo?.profiles?.full_name ?? "Unassigned / unavailable"}`}
+              actions={<>              <button
                 onClick={() => (isClockedIn ? setShowAccomplModal(true) : handleClockIn())}
                 disabled={clockBusy || Boolean(clockLoadError) || Boolean(todayRow?.time_out)}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all shrink-0"
@@ -425,15 +425,14 @@ export default function InternDashboard({ profile, onLogout }) {
               >
                 <IconClock size={14} />
                 {clockBusy ? "Saving…" : isClockedIn ? "Clock Out" : todayRow?.time_out ? "Day Completed" : "Clock In"}
-              </button>
-            </div>
+              </button></>} />
 
             {/* Live session card */}
             {clockLoadError && <p role="alert" className="text-xs" style={{ color: "var(--danger)" }}>
               Clock state unavailable: {clockLoadError}. <button onClick={loadAll} className="underline">Retry</button>
             </p>}
             {isClockedIn && (
-              <div className="rounded-xl p-4 flex items-center gap-4" style={{ background: "var(--info-bg)", border: "1px solid var(--info)" }}>
+              <div className="ui-card rounded-xl p-4 flex items-center gap-4" style={{ background: "var(--info-bg)", border: "1px solid var(--info)" }}>
                 <div className="w-2.5 h-2.5 rounded-full shrink-0 animate-pulse" style={{ background: "var(--info)" }} />
                 <div className="flex-1">
                   <div className="text-xs font-semibold mb-0.5" style={{ color: "var(--info)" }}>Session Active</div>
@@ -449,7 +448,7 @@ export default function InternDashboard({ profile, onLogout }) {
             )}
 
             {/* DTR table */}
-            <div className="rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+            <div className="ui-card rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
               <div className="px-4 py-3 flex items-center justify-between gap-3" style={{ borderBottom: "1px solid var(--border)" }}>
                 <span className="text-sm font-semibold">Daily Time Record (DTR)</span>
                 <div className="flex items-center gap-2">
@@ -476,11 +475,15 @@ export default function InternDashboard({ profile, onLogout }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredDtr.length === 0 && (
+                    {attendanceKnown && filteredDtr.length === 0 && (
                       <tr><td colSpan={6} className="px-4 py-6 text-center text-xs" style={{ color: "var(--muted-foreground)" }}>No records for this period.</td></tr>
                     )}
+                    {!attendanceKnown && <tr><td colSpan={6} className="px-4 py-6 text-center text-xs">Attendance records unavailable. Retry the failed section above.</td></tr>}
                     {filteredDtr.map((d) => {
                       const isToday = d.log_date === todayStr();
+                      const evidence = attendanceEvidence(d);
+                      const clockOutDate = evidence.state === "closed" ? manilaDate(new Date(d.clocked_out_at)) : null;
+                      const recordStatus = evidence.state === "legacy-or-invalid" ? "Unknown" : evidence.state === "open" ? "In Progress" : evidence.verification === "verified" ? "Verified" : "Unverified";
                       return (
                         <tr key={d.id} style={{ borderTop: "1px solid var(--border)" }}>
                           <td className="px-4 py-3 text-xs font-medium whitespace-nowrap">
@@ -489,26 +492,21 @@ export default function InternDashboard({ profile, onLogout }) {
                               <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded text-white" style={{ background: "var(--primary)", fontSize: "9px" }}>TODAY</span>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-xs font-mono">{d.time_in ?? "—"}</td>
+                          <td className="px-4 py-3 text-xs font-mono">{evidence.state === "legacy-or-invalid" ? d.time_in ?? "Unavailable" : formatClockTime(d.clocked_in_at)}</td>
                           <td className="px-4 py-3 text-xs font-mono" style={{ color: !d.time_out ? "var(--muted-foreground)" : undefined }}>
                             {!d.time_out && isToday && isClockedIn ? (
                               <span className="font-mono" style={{ color: "var(--info)" }}>{elapsed}</span>
-                            ) : (d.time_out ?? "—")}
+                            ) : (evidence.state === "closed" ? formatClockTime(d.clocked_out_at) : d.time_out ?? "—")}
+                            {clockOutDate && clockOutDate !== d.log_date && <div className="text-xs muted-copy">Ends {formatBusinessDate(clockOutDate)}</div>}
                           </td>
-                          <td className="px-4 py-3 text-xs font-mono">{d.hours ?? "—"}</td>
+                          <td className="px-4 py-3 text-xs font-mono">
+                            {evidence.state === "closed" ? <><div>{displayHours(evidence.logged)} logged</div><div className="muted-copy">{displayHours(evidence.verified)} verified</div></> : evidence.state === "open" ? "In progress" : <><div>Unknown</div><div className="muted-copy">Stored: {d.hours ?? "Unavailable"}</div></>}
+                          </td>
                           <td className="px-4 py-3 text-xs max-w-xs" style={{ color: "var(--muted-foreground)" }}>
                             {d.accomplishment ? <span style={{ color: "var(--foreground)" }}>{d.accomplishment}</span> : "—"}
                           </td>
                           <td className="px-4 py-3">
-                            <span className="text-xs px-2 py-0.5 rounded-full"
-                              style={
-                                isToday && !d.time_out ? { background: "var(--info-bg)", color: "var(--info)" }
-                                : d.verified ? { background: "var(--success-bg)", color: "var(--success)" }
-                                : { background: "var(--warning-bg)", color: "var(--warning)" }
-                              }
-                            >
-                              {isToday && !d.time_out ? "In Progress" : d.verified ? "Verified" : "Pending"}
-                            </span>
+                            <StatusBadge status={recordStatus} />
                           </td>
                         </tr>
                       );
@@ -519,7 +517,7 @@ export default function InternDashboard({ profile, onLogout }) {
             </div>
 
             {/* Exception Request */}
-            <div className="rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+            <div className="ui-card rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
               <div className="px-4 py-3" style={{ borderBottom: "1px solid var(--border)" }}>
                 <div className="flex items-center gap-2">
                   <IconAlertTriangle size={14} style={{ color: "var(--warning)" }} />
@@ -530,31 +528,31 @@ export default function InternDashboard({ profile, onLogout }) {
               <div className="p-4 space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-medium mb-1" style={{ color: "var(--foreground)" }}>Date</label>
-                    <input type="date" value={exForm.date} onChange={(e) => setExForm((f) => ({ ...f, date: e.target.value }))}
+                    <label htmlFor="correction-date" className="block text-xs font-medium mb-1" style={{ color: "var(--foreground)" }}>Date</label>
+                    <input id="correction-date" disabled={correctionBusy} type="date" value={exForm.date} onChange={(e) => setExForm((f) => ({ ...f, date: e.target.value }))}
                       className={inputCls} style={inputStyle} />
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-xs font-medium mb-1" style={{ color: "var(--foreground)" }}>Clock In</label>
-                      <input type="time" value={exForm.claimedIn} onChange={(e) => setExForm((f) => ({ ...f, claimedIn: e.target.value }))}
+                      <label htmlFor="correction-clock-in" className="block text-xs font-medium mb-1" style={{ color: "var(--foreground)" }}>Clock In</label>
+                      <input id="correction-clock-in" disabled={correctionBusy} type="time" value={exForm.claimedIn} onChange={(e) => setExForm((f) => ({ ...f, claimedIn: e.target.value }))}
                         className={inputCls} style={inputStyle} />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium mb-1" style={{ color: "var(--foreground)" }}>Clock Out</label>
-                      <input type="time" value={exForm.claimedOut} onChange={(e) => setExForm((f) => ({ ...f, claimedOut: e.target.value }))}
+                      <label htmlFor="correction-clock-out" className="block text-xs font-medium mb-1" style={{ color: "var(--foreground)" }}>Clock Out</label>
+                      <input id="correction-clock-out" disabled={correctionBusy} type="time" value={exForm.claimedOut} onChange={(e) => setExForm((f) => ({ ...f, claimedOut: e.target.value }))}
                         className={inputCls} style={inputStyle} />
                     </div>
                   </div>
                   <div>
                     <label htmlFor="correction-end-date" className="block text-xs font-medium mb-1">Clock-out date (overnight only)</label>
-                    <input id="correction-end-date" type="date" value={exForm.endDate} onChange={(e) => setExForm((f) => ({ ...f, endDate: e.target.value }))}
+                    <input id="correction-end-date" disabled={correctionBusy} type="date" value={exForm.endDate} onChange={(e) => setExForm((f) => ({ ...f, endDate: e.target.value }))}
                       className={inputCls} style={inputStyle} />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium mb-1" style={{ color: "var(--foreground)" }}>Reason / Explanation</label>
-                  <textarea rows={2} value={exForm.reason} onChange={(e) => setExForm((f) => ({ ...f, reason: e.target.value }))}
+                  <label htmlFor="correction-reason" className="block text-xs font-medium mb-1" style={{ color: "var(--foreground)" }}>Reason / Explanation</label>
+                  <textarea id="correction-reason" disabled={correctionBusy} rows={2} value={exForm.reason} onChange={(e) => setExForm((f) => ({ ...f, reason: e.target.value }))}
                     placeholder="Explain why a correction is needed..."
                     className="w-full text-sm py-2 px-3 rounded-lg border outline-none resize-none"
                     style={inputStyle} />
@@ -603,32 +601,25 @@ export default function InternDashboard({ profile, onLogout }) {
         {/* ── DOCUMENTS ─────────────────────────────────────────────────── */}
         {!loading && tab === "documents" && (
           <>
-            <div className="flex items-start justify-between">
-              <div>
-                <h1 className="text-xl font-bold">My Documents</h1>
-                <p className="text-sm mt-0.5" style={{ color: "var(--muted-foreground)" }}>
-                  Pre-internship clearance & required submissions · {docApprovedCount}/{docs.length} Approved
-                </p>
-              </div>
-              {clearanceReady && (
-                <span className="text-xs px-3 py-1.5 rounded-lg font-semibold" style={{ background: "var(--success-bg)", color: "var(--success)" }}>
-                  Clearance Eligible
-                </span>
-              )}
-            </div>
+            <PageHeader eyebrow="Intern workspace" title="My Documents"
+              description={documentsKnown ? `Pre-internship clearance & required submissions - ${docApprovedCount}/${docs.length} Approved` : "Document requirements unavailable"}
+              actions={<StatusBadge status={clearanceReady === null ? "Unknown" : clearanceReady ? "Eligible" : "Incomplete"} />} />
 
+            <Submissions internId={profile.id} owner />
+            <h2 id="intern-clearance-requirements" tabIndex={-1} className="text-lg font-semibold scroll-mt-4">Clearance requirements</h2>
+            <p className="text-sm muted-copy">These existing requirements remain separate. Clearance still requires verified target hours, all four standard types, and approval of every current requirement. Flexible submissions do not count toward this checklist.</p>
             <p className="text-xs">PDF, JPEG or PNG, up to 10 MiB. Replacement resets current review and retains previous evidence.</p>
             {recoveryRows.map(v => <div key={v.id} className="text-xs">Unfinished upload: {v.file_name} <button disabled={recoveryBusy || uploadBusy !== null} onClick={() => cleanupUpload(v.id)} className="underline">Retry cleanup</button></div>)}
             <button onClick={refreshRecovery} disabled={recoveryBusy || uploadBusy !== null} className="text-xs underline">Refresh unfinished uploads</button>
             <p className="text-xs">Standard requirements: {documentsKnown ? `${metric.checklist.present}/4 present` : "Unavailable"}</p>
             {!documentsKnown ? <p role="alert">Document requirements unavailable. <button onClick={loadAll} className="underline">Retry</button></p> : docs.length === 0 ? (
-              <div className="rounded-xl p-8 text-center text-sm" style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--muted-foreground)" }}>
-                No document requirements have been set up for you yet — check with your instructor.
+              <div className="ui-card rounded-xl p-8 text-center text-sm" style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--muted-foreground)" }}>
+                No clearance requirements have been set up for you yet — check with your administrator. Flexible submissions are available above.
               </div>
             ) : (
               <>
                 {/* Clearance progress */}
-                <div className="rounded-xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                <div className="ui-card rounded-xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-semibold">Clearance Status</span>
                     <span className="text-sm font-bold" style={{ color: docApprovedCount === docs.length ? "var(--success)" : "var(--primary)" }}>
@@ -642,8 +633,14 @@ export default function InternDashboard({ profile, onLogout }) {
                 </div>
 
                 <div className="space-y-3">
-                  {docs.map((doc) => (
-                    <div key={doc.id} className="rounded-xl p-4" style={{ background: "var(--card)", border: `1px solid ${doc.status === "Needs Revision" ? "#fca5a5" : "var(--border)"}` }}>
+                  <label htmlFor="clearance-requirement" className="block text-sm font-medium">Choose clearance requirement
+                    <select id="clearance-requirement" className="form-control mt-1" value={requirementFilter} onChange={e=>setRequirementFilter(e.target.value)}>
+                      <option value="">All requirements</option>
+                      {docs.map(d=><option key={d.id} value={d.id}>{d.name} · {d.doc_type} · {d.id.slice(-8)}</option>)}
+                    </select>
+                  </label>
+                  {docs.filter(d=>!requirementFilter||d.id===requirementFilter).map((doc) => (
+                    <div key={doc.id} className="ui-card rounded-xl p-4" style={{ background: "var(--card)", border: `1px solid ${doc.status === "Needs Revision" ? "#fca5a5" : "var(--border)"}` }}>
                       <div className="flex items-start gap-3">
                         <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
                           style={{ background: doc.status === "Approved" ? "var(--success-bg)" : doc.status === "Needs Revision" ? "var(--danger-bg)" : "var(--warning-bg)" }}>
@@ -656,7 +653,7 @@ export default function InternDashboard({ profile, onLogout }) {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-sm font-semibold">{doc.name}</span>
-                            <DocStatusBadge status={doc.status} />
+                            <StatusBadge status={doc.status} />
                           </div>
                           {doc.file_name && (
                             <div className="text-xs mt-0.5 flex items-center gap-1" style={{ color: "var(--muted-foreground)" }}>
@@ -683,6 +680,7 @@ export default function InternDashboard({ profile, onLogout }) {
                           </button>
                         </div>
                       </div>
+                      <DocumentHistory doc={doc} />
                     </div>
                   ))}
                 </div>
@@ -694,23 +692,22 @@ export default function InternDashboard({ profile, onLogout }) {
         {/* ── EVALUATIONS ───────────────────────────────────────────────── */}
         {!loading && tab === "evaluations" && (
           <>
-            <div>
-              <h1 className="text-xl font-bold">My Evaluations</h1>
-              <p className="text-sm mt-0.5" style={{ color: "var(--muted-foreground)" }}>Performance ratings from your OJT Coordinator</p>
-            </div>
+            <PageHeader eyebrow="Intern workspace" title="My Evaluations" description="Performance ratings and feedback from your OJT Coordinator. Evaluations are read-only." />
+            <DateFilters period={evalPeriod} onPeriod={setEvalPeriod} start={evalStart} onStart={setEvalStart} end={evalEnd} onEnd={setEvalEnd} error={evaluationRange.error} />
+            {evalError ? <p role="alert">Evaluations unavailable: {evalError} <button onClick={loadAll} className="underline">Retry</button></p> : <p role="status" className="text-sm">{filteredEvaluations.length} of {evaluationList.length} evaluations</p>}
             <div className="space-y-3">
-              {evaluationList.length === 0 && (
-                <div className="rounded-xl p-8 text-center text-sm" style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--muted-foreground)" }}>
-                  No evaluations yet
+              {!evalError && !evaluationRange.error && filteredEvaluations.length === 0 && (
+                <div className="ui-card rounded-xl p-8 text-center text-sm" style={{ background: "var(--card)", border: "1px solid var(--border)", color: "var(--muted-foreground)" }}>
+                  No evaluations match this date range.
                 </div>
               )}
-              {evaluationList.map((ev) => (
-                <div key={ev.id} className="rounded-xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+              {!evalError && filteredEvaluations.map((ev) => (
+                <div key={ev.id} className="ui-card rounded-xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
                       <div className="text-sm font-semibold">Evaluation</div>
                       <div className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>
-                        OJT Coordinator: {ev.profiles?.full_name ?? "—"} · {new Date(ev.created_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" , timeZone: "Asia/Manila" })}
+                        OJT Coordinator: {ev.profiles?.full_name || ev.evaluator_id || "Unavailable"} · {ev.created_at && Number.isFinite(Date.parse(ev.created_at)) ? new Date(ev.created_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", timeZone: "Asia/Manila" }) : "Date unavailable"}
                       </div>
                       <EvaluationCriteria criteria={ev.competencies} />
                       {ev.feedback && (
@@ -735,58 +732,32 @@ export default function InternDashboard({ profile, onLogout }) {
         {/* ── REPORTS ───────────────────────────────────────────────────── */}
         {!loading && tab === "reports" && (
           <>
-            <div>
-              <h1 className="text-xl font-bold">Reports</h1>
-              <p className="text-sm mt-0.5" style={{ color: "var(--muted-foreground)" }}>Download an informational DTR CSV. Official reports and certificates are unavailable.</p>
-            </div>
+            <PageHeader eyebrow="Intern workspace" title="Reports" description="Export complete authorized informational reports. Institutional certificates remain unavailable." />
 
-            <div className="rounded-xl p-4" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+            <div className="ui-card rounded-xl p-4" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
               <div className="text-sm font-semibold">Certificate of Completion unavailable</div>
               <p className="text-xs mt-1">Certificate generation and institutional approval are not implemented.</p>
               <button disabled className="text-xs mt-3 px-3 py-1.5 rounded-lg opacity-50">Certificate unavailable</button>
             </div>
 
-            <div className="grid lg:grid-cols-2 gap-4">
-              {[
-                { title: "Daily Time Record (DTR)", desc: "All your attendance records, with logged and verified hours distinguished; informational CSV only", icon: <IconClock size={22} /> },
-                { title: "Performance Summary", desc: "All evaluation scores and coordinator ratings", icon: <IconTrendingUp size={22} /> },
-                { title: "Weekly Hours Summary", desc: "Week-by-week hours breakdown", icon: <IconCalendar size={22} /> },
-                { title: "Document Archive", desc: "All uploaded clearance forms", icon: <IconFolder size={22} /> },
-              ].map((r) => (
-                <div key={r.title} className="rounded-xl p-4 flex gap-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-                  <span className="shrink-0 mt-0.5" style={{ color: "var(--muted-foreground)" }}>{r.icon}</span>
-                  <div className="flex-1">
-                    <div className="text-sm font-semibold">{r.title}</div>
-                    <div className="text-xs mt-0.5 mb-3" style={{ color: "var(--muted-foreground)" }}>{r.desc}</div>
-                    <div className="flex gap-2">
-                      {r.title === "Daily Time Record (DTR)" && (
-                        <button disabled={exportBusy} onClick={exportDtr} className="text-xs px-3 py-1.5 rounded-lg font-medium" style={{ background: "var(--primary)", color: "#fff" }}>
-                          {exportBusy ? "Preparing CSV..." : "Export all CSV"}
-                        </button>
-                      )}
-                      <button disabled className="text-xs px-3 py-1.5 rounded-lg opacity-50">PDF unavailable</button>
-                      <button disabled className="text-xs px-3 py-1.5 rounded-lg opacity-50">Excel unavailable</button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <ReportsPanel role="intern" profile={profile} />
           </>
         )}
       </div>
 
       {/* ── Accomplishment Modal ─────────────────────────────────────────── */}
       {showAccomplModal && (
-        <Modal title="Log Today's Accomplishments" onClose={() => setShowAccomplModal(false)} width="480px">
+        <Modal title="Log Today's Accomplishments" busy={clockBusy} onClose={() => setShowAccomplModal(false)} width="480px">
           <div className="space-y-4">
             <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>
               Before clocking out, please briefly describe the tasks you completed during your shift.
             </p>
             <div>
-              <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--foreground)" }}>
+              <label htmlFor="clock-out-accomplishment" className="block text-xs font-medium mb-1.5" style={{ color: "var(--foreground)" }}>
                 Accomplishments / Tasks Completed <span style={{ color: "var(--danger)" }}>*</span>
               </label>
               <textarea
+                id="clock-out-accomplishment" disabled={clockBusy}
                 rows={5}
                 value={accomplishment}
                 onChange={(e) => setAccomplishment(e.target.value)}

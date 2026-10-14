@@ -1,0 +1,68 @@
+// Optional real-browser verification with ONLY a synthetic Supabase transport.
+// npm install --prefix .client-review --no-save playwright
+// node tests/browser/client-workflows.mjs
+import { createRequire } from "node:module";
+import { mkdir, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import path from "node:path";
+import assert from "node:assert/strict";
+import { createServer } from "vite";
+import react from "@vitejs/plugin-react";
+import tailwind from "@tailwindcss/vite";
+const require=createRequire(import.meta.url),{chromium}=require(path.resolve(".client-review/node_modules/playwright"));
+const fixture=path.resolve("tests/browser/synthetic-client.js");
+const server=await createServer({configFile:false,envFile:false,cacheDir:path.resolve(".client-review/node_modules/.vite-client"),plugins:[{name:"synthetic-client",enforce:"pre",resolveId(source){if(/(?:^|\/)supabaseClient(?:\.js)?$/.test(source))return fixture;}},react(),tailwind()],server:{host:"127.0.0.1",port:0}});
+let browser;
+const report=[],errors=[];
+try {
+ await server.listen();const origin=server.resolvedUrls.local[0];
+ const executablePath=["C:/Program Files/Google/Chrome/Application/chrome.exe","C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"].find(existsSync);
+ browser=await chromium.launch({headless:true,...(executablePath?{executablePath}:{})});
+ const context=await browser.newContext({viewport:{width:1440,height:1000}});
+ await context.route("**/*",route=>new URL(route.request().url()).hostname==="127.0.0.1"?route.continue():route.abort());
+ const page=await context.newPage();page.on("pageerror",error=>errors.push(error.message));
+ await page.clock.install();
+ const navigate=async(role)=>{await page.goto(`${origin}?role=${role}`);await page.getByRole("heading",{name:/Hi,/}).waitFor();};
+ const nav=async(name)=>{await page.getByRole("button",{name,exact:true}).first().click();};
+ const checkWidth=async()=>assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+ await navigate("instructor");await page.getByText("65 of 65 assigned interns match.",{exact:false}).waitFor();
+ assert.equal(await page.locator("tbody tr").count(),10);await page.getByRole("button",{name:"Next",exact:true}).click();assert.equal(await page.locator("tbody tr").count(),10);
+ await page.getByLabel("Search name, student ID or company").fill("SID-65");assert.equal(await page.locator("tbody tr").count(),1);assert.match(await page.locator("tbody").innerText(),/Intern 065/);
+ assert.equal(await page.getByText("Total Interns",{exact:true}).locator("..").getByText("65",{exact:true}).count(),1);
+ assert.match(await page.locator("main").innerText(),/65 of|1 of 65/);report.push("Instructor: 65-intern roster, search before pagination, page reset, full-roster total retained.");
+ await page.getByLabel("Search name, student ID or company").fill("");await page.getByLabel("Section",{exact:true}).selectOption({label:"Section B"});await page.getByText("32 of 65 assigned interns match.",{exact:false}).waitFor();
+ await page.setViewportSize({width:390,height:844});await checkWidth();await page.screenshot({path:".client-review/instructor-mobile.png",fullPage:true});report.push("Instructor: real section filtering and 390px mobile layout without page overflow.");
+ await page.getByRole("button",{name:"More",exact:true}).click();await page.getByRole("dialog",{name:"More navigation"}).waitFor();await page.keyboard.press("Tab");assert.equal(await page.evaluate(()=>document.activeElement.closest("dialog")!==null),true);await page.keyboard.press("Escape");report.push("Mobile: overflow navigation is a keyboard-accessible modal.");
+ await page.setViewportSize({width:1440,height:1000});await navigate("intern");await nav("My Evaluations");
+ await page.getByRole("button",{name:"This Month",exact:true}).click();await page.getByText("1 of 2 evaluations",{exact:true}).waitFor();
+ await page.getByRole("button",{name:"Custom date range",exact:true}).click();await page.getByLabel("Start date",{exact:true}).fill("2026-10-02");await page.getByLabel("End date",{exact:true}).fill("2026-10-01");await page.getByRole("alert").filter({hasText:"Start date"}).waitFor();
+ report.push("Intern: month/date filters, invalid-range feedback, legacy score unavailable under All.");
+ await nav("My Documents");await page.getByRole("heading",{name:"Flexible submissions",exact:true}).waitFor();await page.getByLabel("Document type",{exact:true}).selectOption('other');await page.getByLabel("Document title",{exact:true}).fill("Weekly evidence");
+ const payload=[{name:"Report.pdf",mimeType:"application/pdf",buffer:Buffer.from("%PDF synthetic")},{name:"Photo.png",mimeType:"image/png",buffer:Buffer.from("synthetic image")}];
+ await page.getByLabel("Files (required)").setInputFiles(payload);await page.getByRole("button",{name:"Submit complete file set",exact:true}).click();await page.getByText("Version 1 · Pending",{exact:true}).waitFor();
+ assert.equal(await page.getByRole('heading',{name:'Clearance requirements',exact:true}).count(),1);report.push("Intern: title + two-file submission, atomic success state, separate clearance coexistence.");
+ await page.getByRole("button",{name:"View file",exact:true}).first().click();await page.getByRole("link",{name:"Open prepared file",exact:true}).waitFor();await page.clock.fastForward(60001);await page.getByText("Link expired. Request a new link.",{exact:true}).waitFor();report.push("Documents: synthetic private signed-link preparation and 60-second expiry/retry state; delivery not tested.");
+ await navigate("instructor");await nav("Intern Documents");await page.getByLabel("Choose an intern from the filtered assigned roster").selectOption("00000000-0000-4000-8000-000000000101");
+ const request=page.getByRole("button",{name:"Request revision",exact:true}).first();await request.waitFor();assert.equal(await request.isDisabled(),true);
+ await page.getByLabel("Review explanation (required to request revision)").fill("Please include a signature.");await request.click();await page.getByText("Version 1 · Needs Revision",{exact:true}).waitFor();
+ report.push("Instructor: each file accessible, version-specific review, revision blocked until explanation supplied.");
+ await navigate("intern");await nav("My Documents");await page.getByText("Please include a signature.",{exact:false}).first().waitFor();await page.getByRole("button",{name:"Resubmit a new file set",exact:true}).click();
+ await page.getByLabel("Files (required)").setInputFiles(payload);await page.getByRole("button",{name:"Submit complete file set",exact:true}).click();await page.getByText("Version 2 · Pending",{exact:true}).waitFor();
+ await page.getByText("Submission versions and review history",{exact:true}).click();await page.getByText("Needs Revision · Reviewer UUID",{exact:false}).waitFor();report.push("Intern: explanation visible, resubmission creates version 2/reset Pending, history retains version 1.");
+ await page.getByLabel("Document type",{exact:true}).selectOption('other');await page.getByLabel("Document title",{exact:true}).fill("Failed draft retained");await page.getByLabel("Files (required)").setInputFiles(payload);await page.evaluate(()=>sessionStorage.setItem("synthetic-partial-upload","true"));
+ await page.getByRole("button",{name:"Submit complete file set",exact:true}).click();await page.getByRole("alert").filter({hasText:"second file failure"}).waitFor();assert.equal(await page.getByLabel("Document title",{exact:true}).inputValue(),"Failed draft retained");
+ await page.evaluate(()=>sessionStorage.removeItem("synthetic-partial-upload"));report.push("Intern: partial upload failure, no partial commit, cleanup and preserved title/file draft.");
+ await page.setViewportSize({width:390,height:844});await checkWidth();await page.screenshot({path:".client-review/documents-mobile.png",fullPage:true});
+ await page.setViewportSize({width:1440,height:1000});await navigate("admin");await nav("Audit Logs");await page.getByLabel("Actor name or UUID").fill("Historical actor");await page.getByText("1–1 of 1 filtered audit events",{exact:true}).first().waitFor();await page.getByText("Legacy / provenance unverified",{exact:true}).waitFor();
+ report.push("Admin: historical actor beyond newest 50 returned by full-history filtering, legacy provenance retained.");
+ await nav("Master Data");await page.getByRole("button",{name:"Inspect archive impact",exact:true}).nth(1).click();const dialog=page.getByRole("dialog",{name:"Archive master entry"});await dialog.waitFor();
+ await page.getByLabel("Type ARCHIVE to confirm").fill("ARCHIVE");assert.equal(await page.getByRole("button",{name:"Confirm archive",exact:true}).isEnabled(),true);
+ await page.keyboard.press("Tab");assert.equal(await page.evaluate(()=>document.activeElement.closest("dialog")!==null),true);await page.keyboard.press("Escape");assert.equal(await dialog.count(),0);
+ await page.getByRole("button",{name:"Inspect archive impact",exact:true}).nth(1).click();await page.getByLabel("Type ARCHIVE to confirm").fill("ARCHIVE");await page.getByRole("button",{name:"Confirm archive",exact:true}).click();await page.getByText("Section A (Archived)",{exact:true}).waitFor();
+ report.push("Admin: reference impact, confirmed archival, native modal focus containment/Escape/return focus.");
+ await nav("Interns");assert.equal(await page.getByLabel("Section",{exact:true}).count(),10);await page.setViewportSize({width:390,height:844});await checkWidth();await page.screenshot({path:".client-review/admin-mobile.png",fullPage:true});
+ await page.evaluate(()=>sessionStorage.setItem("synthetic-read-failure","interns"));await navigate("instructor");await page.getByRole("alert").filter({hasText:"roster unavailable"}).waitFor();await page.evaluate(()=>sessionStorage.removeItem("synthetic-read-failure"));await page.getByRole("button",{name:"Retry",exact:true}).last().click();await page.getByText("65 of 65 assigned interns match.",{exact:false}).waitFor();
+ report.push("Instructor: read error is explicitly unavailable; retry restores the complete roster.");
+ assert.deepEqual(errors,[]);await mkdir(".client-review",{recursive:true});await writeFile(".client-review/browser-results.json",JSON.stringify({passed:report,errors,limits:"Synthetic transport only. No real Auth, RLS, RPC HTTP shape or Storage byte delivery verified."},null,2));
+ console.log(JSON.stringify({passed:report,errors},null,2));
+}finally{if(browser)await browser.close();await server.close();}

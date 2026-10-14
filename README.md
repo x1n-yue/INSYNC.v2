@@ -1,5 +1,41 @@
 # INSync internship monitoring
 
+Latest plan, 2026-10-14: use a **new Supabase project** and preserve the old one.
+Follow [new-project setup](supabase/INSync_New_Project_Setup_README.md), not reset
+scripts. `.env.new` is a blank, ignored configuration template; the active `.env`
+has not changed. New-project credentials, remote setup and acceptance are pending.
+
+2026-10-14: the explicitly authorized test application database was reset and
+rebuilt on the verified INSync.V2 project. Auth users/Storage objects were preserved
+and established profiles reconciled. See [reset/rebuild execution and verification](supabase/INSync_Reset_Rebuild_README.md).
+Fresh schemas now include M14's preserved last-Active-Admin protection. The reset
+files are single-use for the captured old catalog; do not replay them on new data.
+
+Current owner acceptance package: [handover and setup guide](OWNER_HANDOVER.md)
+and [feature inventory, audit and verification evidence](HANDOVER_AUDIT_2026-10-13.md).
+The current client requires reviewed M12 contracts for custom requirements,
+ordinary attendance verification, explicit current-year setup and prospective
+legacy file metadata preservation. Existing databases can use the guarded
+[consolidated update guide](supabase/INSync_Consolidated_Update_README.md).
+Live migration, Auth/email/Storage and deployed acceptance remain operator tasks.
+
+Coordinator announcement/attendance repair and the Intern document-type dropdown:
+read [the focused M13 operator guide](supabase/M13_Coordinator_Repair_README.md).
+M13 installs controlled sending/scoped history access and the expected-timestamp
+verification RPC. Existing databases can apply it independently when its prerequisites
+match; no live execution is implied.
+
+Current audit and local fixes (2026-10-13): [audit/status matrix](AUDIT_DEMO_2026-10-13.md)
+and [client demo walkthrough/setup](DEMO_GUIDE.md). Local and mocked checks are
+reported separately from live Supabase verification, which remains pending.
+
+Client PDF improvements (2026-10-09) are implemented in the current checkout.
+Read [delivery and deployment notes](CLIENT_IMPROVEMENTS.md) and
+[the client checklist](CLIENT_REQUEST_CHECKLIST.md). Deploy reviewed **M10 then
+M11 and M12 before this client**, after their documented prerequisites. Flexible
+multi-file submissions are separate from legacy requirements and **do not change
+clearance policy**. Audit history now filters the entire server history.
+
 React 19 / Vite / Tailwind, Supabase Auth, Postgres and Storage. The browser
 uses public keys; effective authorization belongs to RLS and controlled RPCs.
 Remediation is in progress: see FIX_PROGRESS.md for all 39 findings and limits.
@@ -9,11 +45,19 @@ The system is not described as secure or production-ready.
 
 For browser setup, the exact fresh Supabase SQL order, and first-Admin creation,
 see [WEB_SETUP.md](WEB_SETUP.md). New empty projects start with the seed-free
-[initial_schema.sql](supabase/initial_schema.sql), then M01-M09; existing projects
+[initial_schema.sql](supabase/initial_schema.sql), then M01-M14; existing projects
 must use the inspection/upgrade runbook instead.
 
 Use Node **22.12.0 or later** (supported test lines: 22 and 24), npm and the
 committed lockfile. .nvmrc selects Node 22; Windows CI checks 22 and 24.
+
+If the app is already configured on your client's laptop, copy its project-root
+`.env` to this checkout's project root, then restart `npm run dev`. The `.env`
+file is deliberately excluded from Git, so cloning the repository does not copy
+the Supabase connection settings. Otherwise, start from the blank template below
+and fill in the project's public settings before starting Vite. `.env.example`
+contains no working project credentials; don't overwrite an existing configured
+`.env` with it.
 
 ```powershell
 npm ci
@@ -51,7 +95,7 @@ record hashes, verify the catalog and coordinate client deployment. This session
 never applies SQL to a real project. A genuinely new deployment needs an operator-
 reviewed initial schema without demo seeds plus the reviewed migrations; the
 legacy bootstrap alone is insufficient. `supabase/initial_schema.sql` supplies
-that seed-free starting catalog for new empty projects; it still requires M01-M09
+that seed-free starting catalog for new empty projects; it still requires M01-M11
 and disposable live checks. No live bootstrap/seed is automated.
 
 Public registration always requests intern and creates intern/Pending. Pending
@@ -67,6 +111,11 @@ rules. Clearance eligibility requires verified hours meeting the persisted targe
 all four standard requirement types and approval of every current requirement.
 Invalid or unavailable evidence yields unknown eligibility. Calendar periods use
 Asia/Manila; charts show sums and retain the year. No certificate is issued.
+
+Instructor Class Dashboard At Risk/Cleared cards now show complete assigned-roster
+confirmed counts with Unknown notes and clickable filtered lists. They reuse the
+existing D13 risk and clearance rules, with metadata-only refresh and Retry.
+See [card implementation and deadline proposal](INSTRUCTOR_CARD_IMPLEMENTATION.md).
 
 Uploads reserve server-generated paths for PDF/JPEG/PNG up to 10 MiB. Replacement
 retains committed evidence and review history, resets current review, and checks
@@ -95,11 +144,13 @@ Excel summaries/archives, certificates and manual backups are disabled and label
 unavailable. Uptime monitoring is not connected. Verify real backup availability,
 retention and restoration in the provider console; this UI cannot claim a backup.
 
-VITE_DEMO_MODE defaults to false. Demo shortcuts exist only when explicitly true
-in development and are removed from production even if set true at build time.
-Use only a separate disposable demo project. Operators must rotate any real account
-that reused the previously published demo password; this session performs no real
-account inventory, login attempts or credential rotation.
+Login and Intern registration use the downloaded Figma Make layout with real
+Supabase authentication. Demo shortcuts and prototype credential handling have
+been removed; VITE_DEMO_MODE no longer enables them. Registration retains the
+existing optional school/student ID fields, requests only Intern, and requires
+administrator activation. Confirmation instructions follow Supabase's returned
+session. Operators must rotate any real account that reused the previously
+published demo password; this session performs no real account inventory or rotation.
 
 ## Checks and deployment
 

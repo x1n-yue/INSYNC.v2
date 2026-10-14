@@ -43,15 +43,14 @@ describe("audit baseline characterization (known defects, not remediation)", () 
     expect(result.data).toBeNull();
   });
 
-  it("INS-034: current success/warning token pairs fail small-text contrast", () => {
+  it("INS-034: status token pairs meet small-text contrast", () => {
     const css = source("src/index.css");
     const token = (name) => css.match(new RegExp(`--${name}: (#[0-9a-f]{6});`, "i"))?.[1];
     const luminance = (hex) => hex.slice(1).match(/../g).map((v) => parseInt(v, 16) / 255)
       .map((v) => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)
       .reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0);
     const ratio = (a, b) => (Math.max(luminance(a), luminance(b)) + 0.05) / (Math.min(luminance(a), luminance(b)) + 0.05);
-    expect(ratio(token("success"), token("success-bg"))).toBeCloseTo(3.00, 1);
-    expect(ratio(token("warning"), token("warning-bg"))).toBeCloseTo(2.86, 1);
-    expect(ratio(token("success"), "#ffffff")).toBeLessThan(4.5);
+    for (const name of ["success","warning","danger","info"]) expect(ratio(token(name),token(`${name}-bg`))).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(token("success"), "#ffffff")).toBeGreaterThanOrEqual(4.5);
   });
 });

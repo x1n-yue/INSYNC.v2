@@ -1,5 +1,112 @@
 # Remediation decisions
 
+## Coordinator operations and flexible submission type, 2026-10-13
+
+Explicitly authorized follow-up adds a controlled request-UUID announcement RPC
+using the existing frozen `recipient_ids` array and active assigned roster, not
+a separate recipient table or section broadcast. Direct browser writes are revoked;
+active sender/recipient history remains RLS-scoped. Retry preserves the original
+audience even after reassignment. M13 independently installs the existing M12
+expected-instant verification RPC and restricted grants; it changes no hours,
+timestamps or academic-year relationships. Equivalent timestamp encodings are
+compared at six-digit precision in the client. M13 remains unapplied live.
+
+New flexible submission type selection derives exclusively from actual assigned
+requirement metadata plus Other. Repeated names retain distinct requirement UUIDs;
+only the readable title is submitted through the existing flexible handler.
+There is no clearance requirement linkage or double upload. Historic titles and
+versions remain unchanged. Error vs empty and drafts/files are preserved; no
+institutional document types, deadlines or policies are invented.
+
+## Owner handover, 2026-10-13
+
+The owner authorizes completing intended workflows and informational reports.
+This supersedes the unsupported-report portions of D25/D30 and the lack of a
+normal attendance review control noted in D04. Explicit assigned-staff review
+verifies only trustworthy closed evidence with unchanged expected instants;
+clock-out remains unverified. Custom requirements have UUID-based retry identity
+and remain distinct even with repeated names; all current requirements still
+participate in clearance. M12 also completes D14's explicit current-year marker
+configuration/unique index, changing no cohort/assignment history and performing
+no automatic rollover. Conflicting current years stop deployment for operator
+review, never guessed repair.
+
+No institutional report template was supplied. Informational INSync-branded
+PDF/genuine XLSX/CSV use saved institution/details, selected Manila date ranges,
+complete authorized matching pages, timestamp/totals/page numbers and a
+non-certification note. No official certificate/seal/signature wording is added.
+IDs stay text in XLSX; CSV cannot enforce spreadsheet column types. Current
+clearance/D13 risk use lifetime/current evidence, independent of date selection.
+Retrieval stays bounded/count-checked, not an atomic snapshot. Original document
+files remain available through authorized private access; the document register
+exports metadata/version history without modifying submitted files.
+
+Password recovery uses actual Supabase SDK request/update plus verified own
+session before update, with conditional email instructions and unchanged
+account approval. Auth/email/redirect/Storage/deployment acceptance stays an
+operator task. Bulk provisioning, certificate issuance, app backups and uptime
+remain disabled pending the exact decisions/infrastructure proposed in
+[OWNER_HANDOVER.md](OWNER_HANDOVER.md). See [current feature/evidence inventory](HANDOVER_AUDIT_2026-10-13.md).
+
+Owner handover preserves original saved version-zero file/review metadata when
+the first new replacement succeeds. M12 stores an explicitly unverified raw
+snapshot with a capture timestamp, not a fabricated upload/review timestamp or
+committed version zero. Snapshot access stays own/assigned/Active Admin through
+private Storage; current-version clearance ignores it. Previously lost metadata
+is not reconstructed. Raw snapshot writes/cleanup are protected; missing M12
+metadata support blocks unsafe first legacy replacement before upload.
+
+## Instructor summary cards, 2026-10-13
+
+Explicitly requested extension: At Risk/Cleared cards use the existing shared
+`internMetrics` and D13/D05/D34 rules, count distinct complete authorized roster
+IDs, and retain confirmed counts alongside Unknown: N. D13 exists, so the proposed
+deadline-based alternative is not substituted. No saved academic requirement
+deadline exists; the concrete configurable-date proposal in
+[INSTRUCTOR_CARD_IMPLEMENTATION.md](INSTRUCTOR_CARD_IMPLEMENTATION.md) is
+unimplemented and changes no schema or policy. Card filters combine with search,
+section and pagination; reviews/focus/visible-minute polling refresh metadata,
+without private file retrieval or live Supabase deployment claims.
+
+## Authentication UI, 2026-10-12
+
+The downloaded Figma Make source is design reference only. Six auth components
+are adapted to JSX with scoped colors, the original inline SVG illustration and
+the application's existing Inter font. Existing Supabase configuration, session
+listener, role routing, account restrictions and database policies are retained.
+Signup requests only Intern; M01 remains responsible for effective Intern/Pending.
+Full name/email/password/confirmation remain required; school/student ID remain
+optional as in the existing application. Password minimum remains eight characters.
+Supabase session presence selects confirmation-on/off feedback. Empty identities
+use conditional wording rather than claiming new account creation. Demo shortcuts
+are removed in every build, superseding D31's development-only allowance.
+
+## Client improvements, 2026-10-09
+
+The user explicitly authorized implementation beyond the prior phase stop.
+The nine-page client PDF was reviewed in full. See CLIENT_IMPROVEMENTS.md and
+CLIENT_REQUEST_CHECKLIST.md for explicit requests, defaults and validation.
+
+| ID | Implementation default | Policy boundary |
+|---|---|---|
+| D36 | Flexible sets: required title 1–200 characters, optional description <=2000; 1–10 PDF/JPEG/PNG files, <=10 MiB each, <=50 MiB total. | Bounds are engineering choices. No mandatory templates or document-type categories. |
+| D37 | Reserve a whole set for 15 minutes with an idempotent attempt UUID, finalize atomically, review an explicit version AND revision; explanation required for revision, <=500 characters. | Preserve immutable file sets and append-only reviews; never approve partial uploads or delete committed evidence during recovery. Existing global transaction lock also serializes assignment/status changes. |
+| D38 | Flexible submissions are separate from clearance requirements. | D05/D10/D34 remain unchanged; arbitrary flexible approvals satisfy no standard/custom clearance requirement. A different institutional clearance policy requires explicit authorization. |
+| D39 | Filter real sections/search before pagination; sizes 10/25/50/100, correction batches <=100; complete count-checked data drives totals. | No inferred historical cohort; computed attention uses existing risk logic and is not a stored alert. Bound 50,000-row reads fail explicitly. |
+| D40 | Master removal means explicit reference-preserving archival, after impact and typed ARCHIVE confirmation. Existing assignments stay linked; new assignments to archived entries fail. | Do not silently SET NULL or delete history. Current year archival is blocked. Existing name/label maintenance and RLS remain Admin-controlled. |
+| D41 | Audit filters query complete server history; deterministic created_at/UUID ordering and server count/clamped pagination. | Legacy remains unverified; concurrent insertions can move offset pages, no cross-page snapshot claim. |
+
+D14 correction: inspecting actual M01–M11 shows no current-year uniqueness index
+or atomic switch RPC. Its old statement about DB enforcement was aspirational,
+not implemented behavior. Zero/multiple current flags are now honest setup/ambiguous
+states. Year master data/policies are preserved, no year-to-intern relationship
+is invented. Current-year configuration remains an operator responsibility;
+atomic switching/cohort history is a future recommendation, outside this request.
+
+D16 is implemented by D40 archival rather than physical deletion/reassignment.
+D20/D33/D34 extend to flexible sets without changing the M08 legacy workflow.
+M10/M11 are deliverables only; no real migration application/publication occurred.
+
 Phases 0-4, 2026-10-07. These are conservative **assumed defaults**, not confirmed
 institutional policy. Ambiguous behavior is paused at this decision record before
 implementation; work continues using these defaults as requested. Phase 1 implements

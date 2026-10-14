@@ -1,5 +1,45 @@
 # Nondestructive remediation runbook
 
+Coordinator repair follow-up: [M13 instructions](M13_Coordinator_Repair_README.md)
+provide read-only diagnostics and the focused rerunnable announcement/attendance
+repair. No live execution occurred. The full consolidated update now includes
+M13; its unreviewed cohort-column prerequisites remain distinct from the focused
+repair. Manual subset execution does not mark every original migration applied.
+
+Owner handover update (2026-10-13): the current client also requires reviewed
+M12 after M11, or the regenerated consolidated updater. M12 adds only protected
+Admin custom-requirement creation, assigned-staff verification of closed
+trustworthy attendance and explicit current-year configuration. Review conflicting
+or archived-current years before updating; no automatic year choice/rollover.
+M12 also captures known raw legacy file/review metadata prospectively at first
+replacement, with scoped private access and cleanup protection. This remains
+unverified and outside clearance; metadata already lost is not reconstructed.
+Read [../OWNER_HANDOVER.md](../OWNER_HANDOVER.md) for
+Auth recovery redirect/email setup and current acceptance steps. No live SQL
+or deployment was performed. M05/M09 historical gates remain separate.
+
+Manual SQL Editor alternative (2026-10-13): read
+[INSync_Consolidated_Update_README.md](INSync_Consolidated_Update_README.md) before
+using [the guarded updater](INSync_Consolidated_Update.sql). It checks existing
+definitions, installs final contracts transactionally, leaves historical
+validation gates separate and records no Supabase CLI migration history.
+Original inspection/repair prerequisites below still apply. No live SQL was run.
+
+2026-10-09 update: client PDF improvements add M10/M11. Review
+`../CLIENT_IMPROVEMENTS.md` for exact order and `../CLIENT_REQUEST_CHECKLIST.md`
+for scope. After installed M01–M04/M06–M08 contracts, rehearse **M10 then M11**
+before this client. M05/M09 can remain deferred for existing historical anomalies.
+Reconcile legacy document/attendance/evaluation counts unchanged; inventory the
+new four RLS tables, trusted audit triggers, grants and fixed-search-path RPCs.
+Verify complete-set MIME/size finalization, owner/assigned access, concurrent
+review/replacement/cancel, required revision notes and committed-file cleanup denial.
+Verify master archival keeps reference links and prevents new assignments, and
+audit filters find records older than a latest-50 preview. Confirm deployed provider
+byte cleanup/signed delivery on disposable data before separately authorized rollout.
+No real SQL/application deployment has occurred in this session. Older phase
+records below retain their historical limits; use the new delivery record for
+current implementation/browser evidence and remaining limitations.
+
 Phases 0-4, 2026-10-07. **M01-M09 authored and rehearsed only in fresh synthetic
 in-memory/native Postgres; no real-project migration applied.** Phases 5-6 pending.
 This session will not execute SQL against a real project. Every future rollout

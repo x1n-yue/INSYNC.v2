@@ -1,5 +1,10 @@
 node_modules
 dist
 .env
+.env.*
+!.env.example
 .DS_Store
 .test-postgres/
+.client-review/
+.insync-recovery/
+figma-auth-ui/

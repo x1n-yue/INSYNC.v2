@@ -1,5 +1,10 @@
 # INSync repository audit
 
+Historical October 7 report. For the current checkout, automatic fixes and demo
+verification limits, read [the October 13 audit](AUDIT_DEMO_2026-10-13.md) and
+[demo guide](DEMO_GUIDE.md). The findings below retain their original audit-time
+evidence and do not describe the current source or prove deployed configuration.
+
 Audit date: 2026-10-07 (Asia/Manila). Repository: `D:\Development\Projects\INSYNC.v2`. Reviewed HEAD: `f89766f0b1a2516b00e9cade263e10a64b9f2968`, including the existing untracked `AI_CONTEXT_PROMPT.md` as orientation. Source line references describe the files at audit time.
 
 ## 1. Overall assessment

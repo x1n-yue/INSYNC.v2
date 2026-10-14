@@ -22,6 +22,11 @@ describe("M06-M09 explicit legacy review gates",()=>{
    await expect(db.exec(sql("migrations/M09_validate_domain.sql"))).rejects.toThrow(/m06_/);await db.exec("rollback");
    expect((await db.query("select convalidated from pg_constraint where conname in ('m06_required_hours','m06_evaluation_rubric')")).rows.every(r=>!r.convalidated)).toBe(true);
    expect((await db.query("select attnotnull from pg_attribute where attrelid='public.evaluations'::regclass and attname='overall_score'")).rows[0].attnotnull).toBe(false);
+   // New additive client workflows do not depend on historical validation and
+   // must preserve the same invalid/unknown evidence without normalization.
+   await db.exec(sql("migrations/M10_flexible_submissions.sql"));
+   await db.exec(sql("migrations/M11_admin_history.sql"));
+   for(const row of before)expect((await db.query(`select * from public.${table} where id=$1`,[row.id])).rows[0]).toMatchObject(row);
   }finally{await db.close();}
  },30000);
  it("duplicate requirements stop M08 without canonical-row selection or object changes",async()=>{

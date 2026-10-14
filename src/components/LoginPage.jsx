@@ -1,421 +1,184 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
-import {
-  IconGradCap,
-  IconEye,
-  IconEyeOff,
-  IconMail,
-  IconLock,
-  IconUser,
-  IconBuilding,
-  IconCheck,
-  IconAlertTriangle,
-} from "./Icons";
+import AuthLayout from "./auth/AuthLayout";
+import FormField from "./auth/FormField";
+import PasswordField from "./auth/PasswordField";
+import Notice from "./auth/Notice";
+import SubmitButton from "./auth/SubmitButton";
+import Icon from "./auth/Icons";
+import "./auth/auth.css";
+import { requestPasswordReset } from "../lib/authRecovery";
 
-const demoEnabled = import.meta.env.DEV && import.meta.env.VITE_DEMO_MODE === "true";
-const demoAccounts = import.meta.env.DEV && import.meta.env.VITE_DEMO_MODE === "true" ? [
-  { label: "Admin", email: "admin@insync.ph" },
-  { label: "Instructor", email: "instructor@bsu.edu.ph" },
-  { label: "Intern", email: "andrea@intern.ph" },
-] : [];
+const emptyValues = { fullName: "", studentId: "", organization: "", email: "", password: "", confirmPassword: "" };
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const roleOptions = [
-  { value: "intern", label: "Intern / Student", desc: "Track hours & evaluations" },
-];
-
-function InputField({ label, type, value, onChange, placeholder, icon, rightEl }) {
-  return (
-    <div>
-      <label className="block text-sm font-medium mb-1.5" style={{ color: "var(--foreground)" }}>
-        {label}
-      </label>
-      <div className="relative">
-        {icon && (
-          <span
-            className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
-            style={{ color: "var(--muted-foreground)" }}
-          >
-            {icon}
-          </span>
-        )}
-        <input
-          type={type}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          className="w-full py-2.5 text-sm rounded-lg border outline-none transition-all"
-          style={{
-            paddingLeft: icon ? "36px" : "12px",
-            paddingRight: rightEl ? "40px" : "12px",
-            borderColor: "var(--border)",
-            background: "var(--card)",
-            color: "var(--foreground)",
-          }}
-          onFocus={(e) => (e.target.style.borderColor = "var(--primary)")}
-          onBlur={(e) => (e.target.style.borderColor = "var(--border)")}
-        />
-        {rightEl && <span className="absolute right-3 top-1/2 -translate-y-1/2">{rightEl}</span>}
-      </div>
-    </div>
-  );
+function validate(values, registering, recovering) {
+  const errors = {};
+  if (!values.email.trim()) errors.email = "Email address is required.";
+  else if (!emailPattern.test(values.email.trim())) errors.email = "Enter a valid email address.";
+  if (!recovering && !values.password) errors.password = "Password is required.";
+  if (registering) {
+    if (!values.fullName.trim()) errors.fullName = "Full name is required.";
+    if (values.password && values.password.length < 8) errors.password = "Password must be at least 8 characters.";
+    if (!values.confirmPassword) errors.confirmPassword = "Please confirm your password.";
+    else if (values.confirmPassword !== values.password) errors.confirmPassword = "Passwords do not match.";
+  }
+  return errors;
 }
 
 export default function LoginPage() {
-  const [activeTab, setActiveTab] = useState("signin");
-  const [submitting, setSubmitting] = useState(false);
-  const [errorMsg, setErrorMsg] = useState("");
+  const [screen, setScreen] = useState("login");
+  const [values, setValues] = useState(emptyValues);
+  const [touched, setTouched] = useState({});
+  const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(null);
+  const formRef = useRef(null);
+  const headingRef = useRef(null);
+  const busy = useRef(false);
+  const registering = screen === "register";
+  const recovering = screen === "recover";
+  const validation = validate(values, registering, recovering);
 
-  // Sign in state
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
+  useEffect(() => { headingRef.current?.focus(); }, [screen, success]);
 
-  // Register state
-  const [regName, setRegName] = useState("");
-  const [regEmail, setRegEmail] = useState("");
-  const [regPassword, setRegPassword] = useState("");
-  const [regConfirm, setRegConfirm] = useState("");
-  const [regRole, setRegRole] = useState("intern");
-  const [regOrg, setRegOrg] = useState("");
-  const [regId, setRegId] = useState("");
-  const [showRegPassword, setShowRegPassword] = useState(false);
-  const [showRegConfirm, setShowRegConfirm] = useState(false);
-  const [regSuccess, setRegSuccess] = useState(false);
-
-  const passwordMatch = regPassword === regConfirm && regConfirm.length > 0;
-  const regValid = regName && regEmail && regPassword.length >= 8 && passwordMatch && regRole;
-
-  const fillDemo = (demoEmail) => {
-    if (import.meta.env.DEV && import.meta.env.VITE_DEMO_MODE === "true") {
-      setEmail(demoEmail);
-      setPassword("password123");
-    }
+  const switchScreen = (nextScreen) => {
+    if (busy.current) return;
+    setScreen(nextScreen);
+    setValues(current => ({ ...emptyValues, email: current.email }));
+    setTouched({});
+    setSubmitted(false);
+    setError("");
+    setSuccess(null);
   };
 
-  const handleSignIn = async (e) => {
-    e.preventDefault();
-    setErrorMsg("");
-    setSubmitting(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setSubmitting(false);
-    if (error) setErrorMsg(error.message);
-    // On success, the onAuthStateChange listener in App.jsx picks up the
-    // new session and routes to the right dashboard automatically.
-  };
+  const fieldProps = (field) => ({
+    value: values[field],
+    onChange: value => {
+      setValues(current => ({ ...current, [field]: value }));
+      setError("");
+    },
+    onBlur: () => setTouched(current => ({ ...current, [field]: true })),
+    error: submitted || touched[field] ? validation[field] : undefined,
+    disabled: loading,
+  });
 
-  const handleRegister = async (e) => {
-    e.preventDefault();
-    if (!regValid) return;
-    setErrorMsg("");
-    setSubmitting(true);
-    const { error } = await supabase.auth.signUp({
-      email: regEmail,
-      password: regPassword,
-      options: {
-        data: {
-          full_name: regName,
-          requested_role: regRole,
-          organization: regOrg,
-          student_id: regRole === "intern" ? regId : null,
-        },
-      },
-    });
-    setSubmitting(false);
-    if (error) {
-      setErrorMsg(error.message);
+  const submit = async (event) => {
+    event.preventDefault();
+    if (busy.current) return;
+    setSubmitted(true);
+    setError("");
+    if (Object.keys(validation).length) {
+      requestAnimationFrame(() => formRef.current?.querySelector('[aria-invalid="true"]')?.focus());
       return;
     }
-    setRegSuccess(true);
+    busy.current = true;
+    setLoading(true);
+    try {
+      if (recovering) {
+        const result = await requestPasswordReset(supabase, values.email, window.location);
+        if (!result.ok) { setError(result.error); return; }
+        setSuccess("recovery-email");
+      } else if (registering) {
+        const { data, error: authError } = await supabase.auth.signUp({
+          email: values.email.trim(), password: values.password,
+          options: { data: {
+            full_name: values.fullName.trim(), requested_role: "intern",
+            organization: values.organization.trim(), student_id: values.studentId.trim(),
+          } },
+        });
+        if (authError) { setError(authError.message); return; }
+        if (!data?.user) { setError("Registration could not be confirmed. Please try again."); return; }
+        // Supabase obscures existing confirmed accounts. An empty identity list
+        // must not be presented as a newly created account.
+        const existingIdentity = Array.isArray(data.user.identities) && data.user.identities.length === 0;
+        setSuccess(data.session ? "session" : existingIdentity ? "unconfirmed" : "confirmation");
+        setValues(current => ({ ...current, password: "", confirmPassword: "" }));
+        // App's existing auth listener handles immediate sessions and Pending access.
+      } else {
+        const { error: authError } = await supabase.auth.signInWithPassword({
+          email: values.email.trim(), password: values.password,
+        });
+        if (authError) { setError(authError.message); return; }
+        setValues(current => ({ ...current, password: "" }));
+        setSubmitted(false);
+        setTouched({});
+        // App owns persistence, profile/status checks and role routing.
+      }
+    } catch {
+      setError("Unable to reach authentication. Check your connection and try again.");
+    } finally {
+      busy.current = false;
+      setLoading(false);
+    }
   };
 
-  const eyeBtn = (show, toggle) => (
-    <button
-      type="button"
-      onClick={toggle}
-      className="transition-opacity hover:opacity-70"
-      style={{ color: "var(--muted-foreground)" }}
-    >
-      {show ? <IconEyeOff size={15} /> : <IconEye size={15} />}
-    </button>
-  );
+  const headingClass = "text-[2rem] leading-tight font-bold tracking-[-0.03em] text-insync-navy sm:text-4xl";
+  const linkClass = "rounded font-bold text-insync-teal-dark outline-none hover:text-insync-navy focus-visible:ring-2 focus-visible:ring-insync-teal focus-visible:ring-offset-2 disabled:opacity-50";
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-10" style={{ background: "var(--background)" }}>
-      <div className="w-full max-w-md rounded-2xl shadow-sm overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-        {/* Logo + title */}
-        <div className="flex flex-col items-center pt-8 pb-5 px-8">
-          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style={{ background: "var(--primary)" }}>
-            <IconGradCap size={26} style={{ color: "#fff" }} strokeWidth={1.5} />
+    <AuthLayout variant={registering ? "register" : "login"}>
+      {success ? (
+        <div>
+          <div className="mb-8 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
+            <Icon name={success === "session" ? "check" : "mail"} className="h-7 w-7" />
           </div>
-          <h1 className="text-xl font-bold tracking-tight" style={{ color: "var(--foreground)" }}>
-            INSync
+          <p className="mb-3 text-xs font-bold tracking-[0.16em] text-insync-teal uppercase">{recovering ? "Password recovery" : "Intern registration"}</p>
+          <h1 ref={headingRef} tabIndex={-1} className={headingClass}>
+            {success === "session" ? "Account request submitted" : "Check your email"}
           </h1>
-          <p className="text-sm mt-0.5" style={{ color: "var(--muted-foreground)" }}>
-            Internship Performance Monitoring System
+          <p className="mt-4 text-base leading-7 text-slate-600" role="status">
+            {success === "recovery-email" ? "If this address has an eligible account, check your email for password recovery instructions. Requesting a reset does not change your account approval status." : success === "session"
+              ? "You are signed in. Your Intern account is Pending until an administrator activates it."
+              : success === "unconfirmed"
+                ? "If this address is eligible for registration, follow any confirmation email from INSync. If you already have an account, sign in."
+                : "Follow the Supabase confirmation link sent to your email address before signing in. Email confirmation does not activate your internship access."}
+          </p>
+          {!recovering && <div className="mt-6"><Notice tone="pending" title="Administrator approval required">
+            New accounts are Intern accounts with Pending status. An administrator must approve access to internship records.
+          </Notice></div>}
+          <button type="button" onClick={() => switchScreen("login")} className="mt-8 flex min-h-12 w-full items-center justify-center rounded-xl bg-insync-teal px-5 py-3 text-sm font-bold text-white hover:bg-insync-teal-dark">Continue to sign in</button>
+        </div>
+      ) : (
+        <div className="w-full">
+          <div className={`auth-form-heading ${registering ? "mb-7" : "mb-8"}`}>
+            <p className="mb-3 text-xs font-bold tracking-[0.16em] text-insync-teal uppercase">
+              {registering ? "Intern registration" : "INTERNSHIP PORTAL"}
+            </p>
+            <h1 ref={headingRef} tabIndex={-1} className={headingClass}>
+              {recovering ? "Recover your password" : registering ? "Create your intern account" : "Welcome back"}
+            </h1>
+            <p className="auth-form-intro mt-3 text-base leading-7 text-slate-600">
+              {recovering ? "Request a secure recovery link for your account." : registering ? "Start managing your internship journey with INSync." : "Sign in to continue your internship journey."}
+            </p>
+          </div>
+          <form ref={formRef} onSubmit={submit} noValidate aria-busy={loading}>
+            {registering && <div className="mb-5 grid gap-5 sm:grid-cols-2">
+              <FormField id="register-name" label="Full name" {...fieldProps("fullName")} autoComplete="name" placeholder="Alex Rivera" icon="user" required />
+              <FormField id="register-student-id" label="Student ID" {...fieldProps("studentId")} autoComplete="off" placeholder="2025-00123" icon="id" helper="Optional" />
+            </div>}
+            <div className="space-y-5">
+              {registering && <FormField id="register-organization" label="University / School" {...fieldProps("organization")} autoComplete="organization" placeholder="Polytechnic College of La Union" helper="Optional" />}
+              <FormField id={`${screen}-email`} label="Email address" type="email" {...fieldProps("email")} autoComplete="email" inputMode="email" placeholder="you@university.edu" icon="mail" required />
+              {!recovering && <PasswordField key={`${screen}-password`} id={`${screen}-password`} label="Password" {...fieldProps("password")} autoComplete={registering ? "new-password" : "current-password"} placeholder={registering ? "Create a password" : "Enter your password"} helper={registering ? "Use at least 8 characters." : undefined} required />}
+              {registering && <PasswordField id="register-confirm-password" label="Confirm password" {...fieldProps("confirmPassword")} autoComplete="new-password" placeholder="Re-enter your password" required />}
+            </div>
+            {error && <div className="mt-5"><Notice tone="error" title={registering ? "Unable to create account" : "Unable to sign in"}>{error}</Notice></div>}
+            {registering && <div className="mt-6"><Notice tone="info">
+              New Intern accounts have Pending status and require administrator approval before internship records can be accessed.
+            </Notice></div>}
+            <div className={`auth-submit-row ${registering ? "mt-6" : "mt-7"}`}>
+              <SubmitButton loading={loading} loadingLabel={recovering ? "Requesting link…" : registering ? "Creating account…" : "Signing in…"}>{recovering ? "Send recovery link" : registering ? "Create account" : "Sign in"}</SubmitButton>
+            </div>
+          </form>
+          {!registering && !recovering && <div className="mt-3 text-right"><button type="button" disabled={loading} onClick={() => switchScreen("recover")} className={linkClass}>Forgot password?</button></div>}
+          <p className="auth-form-footer mt-8 text-center text-sm text-slate-600">
+            {registering || recovering ? "Already have an account?" : "New to INSync?"}{" "}
+            <button type="button" onClick={() => switchScreen(registering || recovering ? "login" : "register")} disabled={loading} className={linkClass}>{registering || recovering ? "Sign in" : "Create an account"}</button>
           </p>
         </div>
-
-        {/* Tabs */}
-        <div className="flex mx-8" style={{ borderBottom: "1px solid var(--border)" }}>
-          {["signin", "register"].map((t) => (
-            <button
-              key={t}
-              onClick={() => {
-                setActiveTab(t);
-                setRegSuccess(false);
-                setErrorMsg("");
-              }}
-              className="flex-1 py-3 text-sm font-medium transition-colors"
-              style={{
-                color: activeTab === t ? "var(--primary)" : "var(--muted-foreground)",
-                borderBottom: activeTab === t ? `2px solid var(--primary)` : "2px solid transparent",
-                marginBottom: "-1px",
-              }}
-            >
-              {t === "signin" ? "Sign In" : "Register"}
-            </button>
-          ))}
-        </div>
-
-        {/* ── SIGN IN ── */}
-        {activeTab === "signin" && (
-          <form onSubmit={handleSignIn} className="px-8 pt-6 pb-8 space-y-4">
-            <InputField
-              label="Email Address"
-              type="email"
-              value={email}
-              onChange={setEmail}
-              placeholder="you@example.com"
-              icon={<IconMail size={15} />}
-            />
-            <InputField
-              label="Password"
-              type={showPassword ? "text" : "password"}
-              value={password}
-              onChange={setPassword}
-              placeholder="••••••••••"
-              icon={<IconLock size={15} />}
-              rightEl={eyeBtn(showPassword, () => setShowPassword(!showPassword))}
-            />
-
-            {errorMsg && (
-              <div
-                className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg"
-                style={{ background: "var(--danger-bg)", color: "var(--danger)" }}
-              >
-                <IconAlertTriangle size={13} strokeWidth={2} />
-                {errorMsg}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={submitting || !email || !password}
-              className="w-full py-2.5 rounded-lg text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{ background: "var(--primary)", color: "#fff" }}
-            >
-              {submitting ? "Signing in…" : "Sign In"}
-            </button>
-
-            {demoEnabled && <div>
-              <p className="text-xs text-center mb-2.5" style={{ color: "var(--muted-foreground)" }}>
-                Disposable demo project only. Staff roles require trusted Admin approval.
-              </p>
-              <div className="grid grid-cols-3 gap-2">
-                {demoAccounts.map((d) => (
-                  <button
-                    key={d.email}
-                    type="button"
-                    onClick={() => fillDemo(d.email)}
-                    className="px-2.5 py-2 rounded-lg border text-left transition-all hover:opacity-80"
-                    style={{ borderColor: "var(--border)", background: "var(--muted)" }}
-                  >
-                    <div className="text-xs font-semibold" style={{ color: "var(--foreground)" }}>
-                      {d.label}
-                    </div>
-                    <div className="text-xs mt-0.5 truncate" style={{ color: "var(--muted-foreground)" }}>
-                      {d.email}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>}
-          </form>
-        )}
-
-        {/* ── REGISTER ── */}
-        {activeTab === "register" && !regSuccess && (
-          <form onSubmit={handleRegister} className="px-8 pt-6 pb-8 space-y-4">
-            <InputField
-              label="Full Name"
-              type="text"
-              value={regName}
-              onChange={setRegName}
-              placeholder="Maria Santos"
-              icon={<IconUser size={15} />}
-            />
-
-            <InputField
-              label="Email Address"
-              type="email"
-              value={regEmail}
-              onChange={setRegEmail}
-              placeholder="you@institution.edu"
-              icon={<IconMail size={15} />}
-            />
-
-            {/* Role selector */}
-            <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: "var(--foreground)" }}>
-                Account request
-              </label>
-              <div className="grid grid-cols-1 gap-2">
-                {roleOptions.map((r) => (
-                  <button
-                    key={r.value}
-                    type="button"
-                    onClick={() => setRegRole(r.value)}
-                    className="flex items-center gap-3 px-3.5 py-2.5 rounded-lg border text-left transition-all"
-                    style={{
-                      borderColor: regRole === r.value ? "var(--primary)" : "var(--border)",
-                      background: regRole === r.value ? "var(--primary-light)" : "var(--muted)",
-                    }}
-                  >
-                    <div
-                      className="w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-all"
-                      style={{
-                        borderColor: regRole === r.value ? "var(--primary)" : "var(--border)",
-                        background: regRole === r.value ? "var(--primary)" : "transparent",
-                      }}
-                    >
-                      {regRole === r.value && <IconCheck size={9} style={{ color: "#fff" }} strokeWidth={3} />}
-                    </div>
-                    <div>
-                      <div className="text-xs font-semibold" style={{ color: "var(--foreground)" }}>
-                        {r.label}
-                      </div>
-                      <div className="text-xs" style={{ color: "var(--muted-foreground)" }}>
-                        {r.desc}
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Org / ID */}
-            <InputField
-              label={regRole === "intern" ? "University / School" : "Institution"}
-              type="text"
-              value={regOrg}
-              onChange={setRegOrg}
-              placeholder="Polytechnic College of La Union"
-              icon={<IconBuilding size={15} />}
-            />
-
-            {regRole === "intern" && (
-              <InputField
-                label="Student ID"
-                type="text"
-                value={regId}
-                onChange={setRegId}
-                placeholder="1201010-I"
-                icon={<IconUser size={15} />}
-              />
-            )}
-
-            <InputField
-              label="Password"
-              type={showRegPassword ? "text" : "password"}
-              value={regPassword}
-              onChange={setRegPassword}
-              placeholder="Min. 8 characters"
-              icon={<IconLock size={15} />}
-              rightEl={eyeBtn(showRegPassword, () => setShowRegPassword(!showRegPassword))}
-            />
-
-            <div>
-              <InputField
-                label="Confirm Password"
-                type={showRegConfirm ? "text" : "password"}
-                value={regConfirm}
-                onChange={setRegConfirm}
-                placeholder="Re-enter password"
-                icon={<IconLock size={15} />}
-                rightEl={eyeBtn(showRegConfirm, () => setShowRegConfirm(!showRegConfirm))}
-              />
-              {regConfirm.length > 0 && !passwordMatch && (
-                <p className="text-xs mt-1" style={{ color: "var(--danger)" }}>
-                  Passwords do not match
-                </p>
-              )}
-              {passwordMatch && (
-                <p className="text-xs mt-1 flex items-center gap-1" style={{ color: "var(--success)" }}>
-                  <IconCheck size={12} strokeWidth={2.5} /> Passwords match
-                </p>
-              )}
-            </div>
-
-            {errorMsg && (
-              <div
-                className="flex items-center gap-2 text-xs px-3 py-2 rounded-lg"
-                style={{ background: "var(--danger-bg)", color: "var(--danger)" }}
-              >
-                <IconAlertTriangle size={13} strokeWidth={2} />
-                {errorMsg}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={!regValid || submitting}
-              className="w-full py-2.5 rounded-lg text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{ background: "var(--primary)", color: "#fff" }}
-            >
-              {submitting ? "Creating account…" : "Create Account"}
-            </button>
-
-            <p className="text-xs text-center" style={{ color: "var(--muted-foreground)" }}>
-              By registering, your account will be reviewed and activated by an administrator.
-            </p>
-          </form>
-        )}
-
-        {/* ── REGISTER SUCCESS ── */}
-        {activeTab === "register" && regSuccess && (
-          <div className="px-8 pt-6 pb-8 flex flex-col items-center text-center">
-            <div className="w-12 h-12 rounded-full flex items-center justify-center mb-4" style={{ background: "var(--success-bg)" }}>
-              <IconCheck size={22} style={{ color: "var(--success)" }} strokeWidth={2.5} />
-            </div>
-            <h3 className="text-base font-semibold mb-1">Account Request Submitted</h3>
-            <p className="text-sm mb-1" style={{ color: "var(--muted-foreground)" }}>
-              Welcome, <span className="font-medium" style={{ color: "var(--foreground)" }}>{regName}</span>!
-            </p>
-            <p className="text-sm mb-6" style={{ color: "var(--muted-foreground)" }}>
-              Your account request is for{" "}
-              <span className="font-medium" style={{ color: "var(--primary)" }}>
-                {roleOptions.find((r) => r.value === regRole)?.label}
-              </span>
-              . An administrator must approve effective role and access. Contact your administrator for a staff-role request.
-            </p>
-            <button
-              onClick={() => {
-                setActiveTab("signin");
-                setEmail(regEmail);
-                setRegSuccess(false);
-              }}
-              className="w-full py-2.5 rounded-lg text-sm font-semibold"
-              style={{ background: "var(--primary)", color: "#fff" }}
-            >
-              Go to Sign In
-            </button>
-          </div>
-        )}
-      </div>
-
-      <p className="text-xs mt-6" style={{ color: "var(--muted-foreground)" }}>
-        © 2026 INSync. For authorized users only.
-      </p>
-    </div>
+      )}
+    </AuthLayout>
   );
 }
