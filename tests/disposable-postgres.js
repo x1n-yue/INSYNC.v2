@@ -10,11 +10,11 @@ import { randomBytes } from "node:crypto";
 import pg from "pg";
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-async function run(binary, args) {
-  const child = spawn(binary, args, { windowsHide: true, stdio: "pipe" });
+async function run(binary, args, quiet = false) {
+  const child = spawn(binary, args, { windowsHide: true, stdio: quiet ? "ignore" : "pipe" });
   let output = "";
-  child.stdout.on("data", (chunk) => { output += chunk; });
-  child.stderr.on("data", (chunk) => { output += chunk; });
+  child.stdout?.on("data", (chunk) => { output += chunk; });
+  child.stderr?.on("data", (chunk) => { output += chunk; });
   const [code] = await once(child, "close");
   if (code !== 0) throw Object.assign(new Error(`Disposable Postgres command failed (${code}): ${output}`), { exitCode: code });
 }
@@ -82,7 +82,9 @@ export async function disposablePostgres() {
       const logFile = path.join(directory, "server.log");
       windowsControlled = true;
       try {
-        await run(pgCtl, ["-D", dataDir, "-l", logFile, "-o", `-h 127.0.0.1 -p ${port}`, "-w", "-t", "30", "start"]);
+        // The background Windows command process must not retain Node's pipes;
+        // otherwise its open handles delay the child's close event until stop.
+        await run(pgCtl, ["-D", dataDir, "-l", logFile, "-o", `-h 127.0.0.1 -p ${port}`, "-w", "-t", "30", "start"], true);
       } catch (error) {
         const output = await readFile(logFile, "utf8").catch(() => "");
         throw new Error(`${error.message}\n${output.slice(-16384)}`);
