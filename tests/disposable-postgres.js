@@ -3,7 +3,7 @@
 // reads schema.sql, creates an OS user, registers a service, or contacts Supabase.
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
@@ -16,7 +16,7 @@ async function run(binary, args) {
   child.stdout.on("data", (chunk) => { output += chunk; });
   child.stderr.on("data", (chunk) => { output += chunk; });
   const [code] = await once(child, "close");
-  if (code !== 0) throw new Error(`Disposable Postgres command failed (${code}): ${output}`);
+  if (code !== 0) throw Object.assign(new Error(`Disposable Postgres command failed (${code}): ${output}`), { exitCode: code });
 }
 
 export async function disposablePostgres() {
@@ -39,6 +39,7 @@ export async function disposablePostgres() {
   let serverExited = false;
   let serverError;
   let serverOutput = "";
+  let windowsControlled = false;
   const connect = async () => {
     if (!ready || serverExited) throw new Error("Our disposable server is not ready");
     const client = new pg.Client({ host: "127.0.0.1", port, user: "postgres", password,
@@ -50,6 +51,14 @@ export async function disposablePostgres() {
   };
   const stop = async () => {
     await Promise.allSettled([...clients].map((client) => client.end()));
+    if (windowsControlled) {
+      let running = true;
+      try { await run(pgCtl, ["-D", dataDir, "status"]); }
+      catch (error) { if (error.exitCode === 3) running = false; else throw error; }
+      if (running) await run(pgCtl, ["-D", dataDir, "-m", "fast", "-w", "-t", "30", "stop"]);
+      windowsControlled = false;
+      ready = false;
+    }
     if (server && !serverExited) await run(pgCtl, ["-D", dataDir, "-m", "fast", "-w", "-t", "10", "stop"]);
     if (server && !serverExited) await once(server, "close");
     // Verify actual resolved paths before ANY recursive removal on Windows.
@@ -65,6 +74,22 @@ export async function disposablePostgres() {
     try {
       await run(initdb, ["-D", dataDir, "--username=postgres", "--auth=scram-sha-256", `--pwfile=${passwordFile}`, "--locale=C", "--encoding=UTF8"]);
     } finally { await rm(passwordFile, { force: true }); }
+    if (process.platform === "win32") {
+      // PostgreSQL's launcher uses a restricted Windows token. Direct postgres
+      // rejects the administrator account used by hosted Windows CI runners.
+      // No OS user/service is created. -w checks our unique cluster's readiness
+      // before connect() may use its loopback port and random password.
+      const logFile = path.join(directory, "server.log");
+      windowsControlled = true;
+      try {
+        await run(pgCtl, ["-D", dataDir, "-l", logFile, "-o", `-h 127.0.0.1 -p ${port}`, "-w", "-t", "30", "start"]);
+      } catch (error) {
+        const output = await readFile(logFile, "utf8").catch(() => "");
+        throw new Error(`${error.message}\n${output.slice(-16384)}`);
+      }
+      ready = true;
+      return { connect, stop };
+    }
     server = spawn(postgres, ["-D", dataDir, "-h", "127.0.0.1", "-p", String(port)], {
       windowsHide: true, stdio: "pipe", env: { ...process.env, LC_MESSAGES: "C" },
     });
