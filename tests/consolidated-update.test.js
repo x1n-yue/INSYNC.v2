@@ -133,10 +133,12 @@ describe('consolidated existing-database update (native synthetic PostgreSQL)', 
   it('still rejects changed function bodies in a CRLF script, rolling back installation', async () => {
     const db = await database(true);
     const manifest = JSON.parse(update.split('$insync_manifest$')[1]);
-    const original = manifest.functions.find(f => f.name === 'admin_add_requirement').def;
+    const original = manifest.functions.find(f => f.name === 'admin_add_requirement').def.replace(/\r\n/g, '\n');
     const altered = original.replace(/\bbegin\b/i, 'begin perform 1;');
     expect(altered).not.toBe(original);
-    const corrupted = update.replace(original, altered).replace(/\r?\n/g, '\r\n');
+    const normalized = update.replace(/\r\n/g, '\n');
+    const corrupted = normalized.replace(original, altered).replace(/\r?\n/g, '\r\n');
+    expect(corrupted).not.toBe(normalized.replace(/\r?\n/g, '\r\n'));
     await expect(db.query(corrupted)).rejects.toThrow(/Final RPC\/security definition failed/);
     await db.query('rollback');
     expect((await db.query("select count(*)::int n from pg_tables where schemaname='public'")).rows[0].n).toBe(12);
