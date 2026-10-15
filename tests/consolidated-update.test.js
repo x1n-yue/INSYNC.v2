@@ -123,6 +123,25 @@ describe('consolidated existing-database update (native synthetic PostgreSQL)', 
     expect((await db.query("select count(*)::int n from pg_constraint where conname like 'm03_%' or conname like 'm06_%' and contype='c'")).rows[0].n).toBeGreaterThanOrEqual(6);
   }, 60000);
 
+  it('preserves final security attestation when Git or SQL Editor transports CRLF', async () => {
+    const db = await database(true);
+    await db.query(update.replace(/\r?\n/g, '\r\n'));
+    await apply(db);
+    expect((await db.query("select count(*)::int n from pg_tables where schemaname='public'")).rows[0].n).toBe(28);
+  }, 60000);
+
+  it('still rejects changed function bodies in a CRLF script, rolling back installation', async () => {
+    const db = await database(true);
+    const manifest = JSON.parse(update.split('$insync_manifest$')[1]);
+    const original = manifest.functions.find(f => f.name === 'admin_add_requirement').def;
+    const altered = original.replace(/\bbegin\b/i, 'begin perform 1;');
+    expect(altered).not.toBe(original);
+    const corrupted = update.replace(original, altered).replace(/\r?\n/g, '\r\n');
+    await expect(db.query(corrupted)).rejects.toThrow(/Final RPC\/security definition failed/);
+    await db.query('rollback');
+    expect((await db.query("select count(*)::int n from pg_tables where schemaname='public'")).rows[0].n).toBe(12);
+  }, 60000);
+
   it('preserves baseline accounts, assignments, legacy evidence and invalid old rubric/attendance', async () => {
     const db = await database();
     for (const n of [1, 2, 4]) await db.query('insert into auth.users(id,email) values($1,$2)', [uid(n), `legacy${n}@example.invalid`]);

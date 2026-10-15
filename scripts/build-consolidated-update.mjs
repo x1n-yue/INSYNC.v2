@@ -431,7 +431,8 @@ BEGIN
  END LOOP;
  FOR r IN SELECT e FROM jsonb_array_elements(m->'functions') e LOOP
   IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_proc p WHERE p.oid=pg_catalog.to_regprocedure(r.e->>'identity') AND p.proowner='postgres'::regrole
-   AND pg_catalog.pg_get_functiondef(p.oid)=r.e->>'def' AND NOT pg_catalog.has_function_privilege('anon',p.oid,'EXECUTE')
+   -- Git/SQL Editor may transport LF as CRLF; compare every other byte exactly.
+   AND replace(pg_catalog.pg_get_functiondef(p.oid),chr(13),'')=replace(r.e->>'def',chr(13),'') AND NOT pg_catalog.has_function_privilege('anon',p.oid,'EXECUTE')
    AND pg_catalog.has_function_privilege('authenticated',p.oid,'EXECUTE')=(r.e->>'allowed')::boolean)
   THEN RAISE EXCEPTION 'Final RPC/security definition failed: %',r.e->>'identity'; END IF;
  END LOOP;
