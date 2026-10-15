@@ -38,6 +38,7 @@ export async function disposablePostgres() {
   let ready = false;
   let serverExited = false;
   let serverError;
+  let serverOutput = "";
   const connect = async () => {
     if (!ready || serverExited) throw new Error("Our disposable server is not ready");
     const client = new pg.Client({ host: "127.0.0.1", port, user: "postgres", password,
@@ -69,11 +70,14 @@ export async function disposablePostgres() {
     });
     server.on("error", (error) => { serverError = error; });
     server.on("close", () => { serverExited = true; });
-    const capture = (chunk) => { if (String(chunk).includes("database system is ready to accept connections")) ready = true; };
+    const capture = (chunk) => {
+      serverOutput = (serverOutput + String(chunk)).slice(-16384);
+      if (serverOutput.includes("database system is ready to accept connections")) ready = true;
+    };
     server.stdout.on("data", capture);
     server.stderr.on("data", capture);
-    for (let count = 0; count < 200 && !ready && !serverExited && !serverError; count++) await wait(50);
-    if (!ready || serverExited || serverError) throw new Error("Our disposable Postgres failed to become ready");
+    for (let count = 0; count < 600 && !ready && !serverExited && !serverError; count++) await wait(50);
+    if (!ready || serverExited || serverError) throw new Error(`Our disposable Postgres failed to become ready: ${serverError?.message || serverOutput || "no server output"}`);
     return { connect, stop };
   } catch (error) {
     await stop();

@@ -4,6 +4,7 @@ jobs:
   verify:
     runs-on: windows-latest
     strategy:
+      fail-fast: false
       matrix:
         node: [22, 24]
     steps:
@@ -14,6 +15,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
-      - run: npm test
+      - run: npm test -- --maxWorkers=2
       - run: npm run build
       - run: npm audit --ignore-scripts
