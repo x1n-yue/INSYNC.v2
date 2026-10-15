@@ -1,11 +1,18 @@
 # INSync project context prompt
 
-LATEST INSTRUCTION: move to a NEW Supabase project; preserve the old project.
-No further old-project queries/mutations/reset execution. `.env.new` has blank
-public config fields and is ignored; `.env` remains unchanged until a new URL/key
-is supplied and verified. Follow supabase/INSync_New_Project_Setup_README.md.
-Fresh generator now defaults to fresh-only, without reading old private identities
-or generating a reset. Do not use --prepare-reset for this setup.
+M18 local completion, 2026-10-15: **2,501 tests / 36 files passed**, lint/build passed; **7 browser groups / 18 screenshots / 0 page errors** with mocked transports, native isolated PostgreSQL authorization/upgrade tests and unclipped3-page A4 PDF checks. Live Auth/Storage/rollout remain unverified and unauthorized for automatic execution. See [guide](LOGBOOK_ATTENDANCE.md) and FIX_PROGRESS.md.
+
+Current workflow: [Supervisor logbook submission and M18 rollout](LOGBOOK_ATTENDANCE.md). Supervisor uploads signed paper evidence; the assigned Coordinator encodes and uses **Verify & Record Attendance** once. This supersedes new Coordinator uploads under M17. Historical records remain unchanged. Local only: no live migration, reset or deployment.
+
+
+Previous M17 fallback (new-entry workflow superseded by M18): [Company Attendance Sheet guide and M17 rollout](COMPANY_ATTENDANCE.md). This replaces the offline/PWA attendance proposal. Local preparation only; no live migration, reset or deployment.
+
+Current follow-up: [shared ratings, selectable feedback and Supervisor layout](EVALUATION_CONTROLS.md). Additive M16 and the matching client are prepared locally; M15 remains unchanged. No live migration, reset or deployment was performed.
+
+Current 2026-10-14 deliverable: [Supervisor evaluations and correction retirement](SUPERVISOR_WORKFLOW.md). The user authorizes a fourth role and an additive upgrade for deployed project `tcntyrwwqzyyqlzdtuer`. M15 and the new client are prepared locally; no live schema change, reset or deployment was performed. Older correction-request/new-evaluation and three-role guidance below is historical and superseded.
+
+
+LATEST INSTRUCTION: Implemented M18 Supervisor signed-logbook submissions -> scoped Coordinator review/encoding -> atomic Verify & Record Attendance. Inspect LOGBOOK_ATTENDANCE.md. M15/M16/M17 immutable. No live operations. The following M17 paragraph describes the previous historical workflow. Previous instruction: implement the Company Attendance Sheet paper fallback (COMPANY_ATTENDANCE.md), superseding offline/PWA attendance proposals; preserve the existing ledger, rules, assignments and correction retirement. M17 follows unchanged M16; no reset/live migration/deployment. Previous follow-up: retain Supervisor -> Coordinator -> Intern workflow and correction retirement; add shared rating buttons, selectable deterministic feedback, criterion-specific reasons and scoped Supervisor layout fixes. M16 follows unchanged M15; inspect EVALUATION_CONTROLS.md. This overrides the prior three-role limitation and new-project plan. Prepare additive SQL locally; do not reset, migrate live or deploy. User-confirmed target: tcntyrwwqzyyqlzdtuer, available in read-only CLI listing. The local CLI link is stale (upnkotnmoeaykummcnlx); do not use --linked. See SUPERVISOR_WORKFLOW.md for implementation and rollout.
 
 2026-10-14: authorized test application reset/rebuild actually executed against
 verified project upnkotnmoeaykummcnlx. Current schema includes M01–M14 final effects,
@@ -33,7 +40,7 @@ It uses React 19 / JavaScript / JSX, Vite 7, Tailwind 4 and Supabase Auth,
 Postgres and private Storage. Node >=22.12 is required. There is no Express
 backend. Reuse existing components, tokens, icons, modals, toasts and helpers.
 
-Roles are Intern, Instructor and Admin. Public registration always creates
+Roles are Intern, Instructor (OJT Coordinator), Supervisor and Admin. Public registration always creates
 Intern/Pending. Only Active Admins control effective roles and assignments.
 Instructors access their assigned interns; SQL RPCs, RLS and Storage policies
 are the effective authority, not frontend checks. First Admin creation is an
@@ -42,15 +49,13 @@ operator procedure, never an arbitrary signup role or seed account.
 Interns see assignment/progress, separate logged and verified hours, attendance
 charts, evaluations and frozen-audience announcements. Clock RPCs use server
 timestamps and Asia/Manila business dates. Ordinary clock-out remains unverified.
-Corrections, overnight intervals and reviewer evidence follow the existing rules.
+Historical corrections remain; M15 retires correction mutations/UI. Ordinary clocking, verification and interval rules remain.
 The four rubric criteria/weights are server-scored; invalid legacy scores are
 Unavailable. Evaluation filters use inclusive Manila dates and Monday–Sunday weeks.
 
 Instructor lists search name, student ID and company and filter the real section
 relationship before pagination. Dashboard totals use complete authorized,
-count-checked reads, independent of displayed pages. Bulk correction reviews
-retain their 100-item limit and per-item outcomes. Computed attention uses the
-existing risk rules; it does not create stored alerts or invent deadlines.
+count-checked reads, independent of displayed pages. Computed attention uses risk and documents; no pending-correction queue remains.
 Academic-year master data has no historical cohort FK or atomic current-year
 switching/uniqueness implementation. Do not invent one or assume D14 was enforced.
 

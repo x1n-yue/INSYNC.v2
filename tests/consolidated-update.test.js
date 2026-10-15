@@ -106,7 +106,7 @@ async function snapshot(db) {
   const names = (await db.query("select tablename from pg_tables where schemaname='public' order by tablename")).rows.map((r) => r.tablename);
   const result = {};
   for (const name of [...names.map((n) => `public.${n}`), 'auth.users', 'storage.objects']) {
-    result[name] = (await db.query(`select to_jsonb(t) as data from ${name} t order by id`)).rows;
+    result[name] = (await db.query(`select to_jsonb(t) as data from ${name} t order by coalesce(to_jsonb(t)->>'id',to_jsonb(t)->>'submission_id'),to_jsonb(t)->>'version'`)).rows;
   }
   return result;
 }
@@ -116,7 +116,7 @@ describe('consolidated existing-database update (native synthetic PostgreSQL)', 
 
   it('installs final contracts on the supported empty initial baseline and runs twice', async () => {
     const db = await database(true); await apply(db); await apply(db);
-    expect((await db.query("select count(*)::int n from pg_tables where schemaname='public'")).rows[0].n).toBe(18);
+    expect((await db.query("select count(*)::int n from pg_tables where schemaname='public'")).rows[0].n).toBe(28);
     await db.query("insert into auth.users(id,email,raw_user_meta_data) values($1,'pending@example.invalid','{\"role\":\"admin\"}')", [uid(10)]);
     expect((await db.query('select role,status from public.profiles where id=$1', [uid(10)])).rows[0]).toEqual({ role: 'intern', status: 'Pending' });
     expect(await as(db, uid(10), 'select * from public.documents')).toEqual([]);
@@ -171,11 +171,11 @@ describe('consolidated existing-database update (native synthetic PostgreSQL)', 
     const guide = sql('INSync_Consolidated_Update_README.md');
     const verification = guide.match(/```sql\r?\n([\s\S]*?)```/)[1];
     const results = await db.query(verification);
-    expect(results[0].rows).toHaveLength(18);
+    expect(results[0].rows).toHaveLength(28);
     expect(results[1].rows.every((r) => r.installed)).toBe(true);
-    expect(results.find((r) => r.fields.some((f) => f.name === 'index_name')).rows).toHaveLength(10);
-    expect(results.find((r) => r.fields.some((f) => f.name === 'tgname')).rows).toHaveLength(31);
-    expect(results.find((r) => r.fields.some((f) => f.name === 'policyname')).rows.filter((r) => /^m\d\d_/.test(r.policyname))).toHaveLength(51);
+    expect(results.find((r) => r.fields.some((f) => f.name === 'index_name')).rows).toHaveLength(11);
+    expect(results.find((r) => r.fields.some((f) => f.name === 'tgname')).rows).toHaveLength(51);
+    expect(results.find((r) => r.fields.some((f) => f.name === 'policyname')).rows.filter((r) => /^m\d\d_/.test(r.policyname))).toHaveLength(78);
   }, 60000);
 
   it('repairs outdated compatible function, policy, ACL and disabled trigger definitions', async () => {

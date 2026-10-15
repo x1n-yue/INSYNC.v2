@@ -1,5 +1,10 @@
 # Small, one-time INSync demo dataset
 
+The legacy SQL deliberately refuses M15 schemas. Keep Supervisor evaluations, reviews, correction history and audit records; a new cleanup policy would need separate authorization. Tests below rehearse historical M14 fixtures only.
+
+Current additive M15 upgrade: [Supervisor workflow and rollout](../../SUPERVISOR_WORKFLOW.md). Supervisor is authorized; correction mutations and direct Coordinator evaluation creation are retired. Target: `tcntyrwwqzyyqlzdtuer`; no live rollout occurred. Historical cleanup/demo/reset procedures below do not authorize removing current evaluation/correction history.
+
+
 **Write-only delivery; no remote SQL execution is authorized or performed.**
 Target only the NEW project **`tcntyrwwqzyyqlzdtuer`**. Preserve the old project
 `upnkotnmoeaykummcnlx`. These are optional demo scripts, not migrations and not

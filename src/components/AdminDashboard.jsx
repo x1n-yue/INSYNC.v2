@@ -8,6 +8,9 @@ import { displayHours, internMetrics } from "../lib/metrics";
 import { completeRows, saveAssignment } from "../lib/workflows";
 import { paginate } from "../lib/lists";
 import { Pagination } from "./ListControls";
+import SupervisorAssignments from "./SupervisorAssignments";
+import LogbookAttendance from './LogbookAttendance';
+import { ManualAttendanceHistory } from './CompanyAttendance';
 import AuditHistory from "./AuditHistory";
 import RequirementManager from "./RequirementManager";
 import { setCurrentYear } from '../lib/handoverWorkflows';
@@ -40,9 +43,9 @@ const pageDescriptions = {
   backup: "Review role permissions. Backup status and uptime monitoring are not connected.",
 };
 
-const roleLabel = { admin: "Admin", instructor: "Instructor", intern: "Intern" };
-const roleColors = { Intern: "#096d68", Instructor: "#315a76", Admin: "#0b1f33" };
-const roles = ["Intern", "Instructor", "Admin"];
+const roleLabel = { admin: "Admin", instructor: "Instructor", intern: "Intern", supervisor: "Supervisor" };
+const roleColors = { Intern: "#096d68", Instructor: "#315a76", Admin: "#0b1f33", Supervisor: "#096d68" };
+const roles = ["Intern", "Instructor", "Supervisor", "Admin"];
 
 function Field({ label, children }) {
   const id = useId();
@@ -247,7 +250,7 @@ export default function AdminDashboard({ profile, onLogout }) {
       name: u.full_name,
       role: roleLabel[u.role] ?? u.role,
       status: u.status,
-      companyId: existingInternRow?.company_id ?? "",
+      companyId: u.role === "supervisor" ? u.supervisor_company_id ?? "" : existingInternRow?.company_id ?? "",
     });
     setUserModal({ open: true, editing: u });
   };
@@ -260,7 +263,7 @@ export default function AdminDashboard({ profile, onLogout }) {
     setAccountBusy(true);
     try {
       const patch = { full_name: userForm.name, role: userForm.role.toLowerCase(), status: userForm.status };
-      if (patch.role === "intern") patch.company_id = userForm.companyId || null;
+      if (["intern", "supervisor"].includes(patch.role)) patch.company_id = userForm.companyId || null;
       const result = await recordRpc(supabase, "admin_update_account", { p_id: userModal.editing.id, p_patch: patch });
       if (!result.ok) { toast(result.error, "error"); return result; }
       applyAccount(result.data);
@@ -481,6 +484,8 @@ export default function AdminDashboard({ profile, onLogout }) {
           )}
 
           {/* ── INTERNS ── */}
+          {!loading && tab === "interns" && <SupervisorAssignments users={users} interns={internRows} companies={companies} onChanged={refreshAudit} />}
+          {!loading && tab === "interns" && <section className="surface-card company-attendance"><LogbookAttendance admin/><ManualAttendanceHistory rows={metricAttendance} interns={users}/></section>}
           {!loading && tab === "interns" && (
             <div className="ui-card rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
               <div className="px-4 py-3" style={{ borderBottom: "1px solid var(--border)" }}>
@@ -657,6 +662,7 @@ export default function AdminDashboard({ profile, onLogout }) {
                   {[
                     { role: "System Admin", perms: ["Full access", "User management", "Audit logs"] },
                     { role: "Instructor", perms: ["Assigned evaluations", "Assigned report exports", "Assigned attendance", "Manage assigned alerts"] },
+                    { role: "Supervisor", perms: ["Explicit assigned Interns", "Own evaluation drafts", "Submit to Coordinator"] },
                     { role: "Intern", perms: ["Log attendance", "View evaluations", "View progress"] },
                   ].map((r) => (
                     <div key={r.role} className="p-3 rounded-lg" style={{ background: "var(--muted)" }}>
@@ -694,7 +700,7 @@ export default function AdminDashboard({ profile, onLogout }) {
                 {roles.map((r) => <option key={r}>{r}</option>)}
               </select>
             </Field>
-            {userForm.role === "Intern" && (
+            {["Intern", "Supervisor"].includes(userForm.role) && (
               <Field label="Company">
                 <select disabled={accountBusy} value={userForm.companyId} onChange={(e) => setUserForm((f) => ({ ...f, companyId: e.target.value }))}
                   className={inputCls} style={inputStyle}>

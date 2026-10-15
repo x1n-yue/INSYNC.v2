@@ -1,5 +1,31 @@
 # Local remediation tests
 
+M18 local completion, 2026-10-15: **2,501 tests / 36 files passed**, lint/build passed; **7 browser groups / 18 screenshots / 0 page errors** with mocked transports, native isolated PostgreSQL authorization/upgrade tests and unclipped3-page A4 PDF checks. Live Auth/Storage/rollout remain unverified and unauthorized for automatic execution. See [guide](../LOGBOOK_ATTENDANCE.md) and FIX_PROGRESS.md.
+
+Current M18 workflow: [Supervisor logbook guide and rollout](../LOGBOOK_ATTENDANCE.md). Native `logbook-postgres.test.js` checks scoped source versions, routing, private evidence, returns, atomic verified ledger batches, constraints, audits and multi-connection races. `logbook-upgrade.test.js` creates genuine M17 records before M18 and checks retained data plus populated M18 updater reruns. `logbook.test.jsx` checks client response guards, bounded reads, upload reconciliation, canonical previews, source labels, reports and clearance totals.
+
+`node tests/browser/logbook-workflows.mjs` renders actual React in Chromium/Edge with synthetic transports and external requests blocked. Seven workflow groups cover Supervisor PDFs/images, two-page uploads, drafts/retries, missing Coordinator, return/resubmission/history, Coordinator encoding/atomic errors/confirmation/retries, Intern history/CSV/privacy, retained A4 printing, historical verification, loading/error/filtered/no-assignment states, desktop/tablet/mobile/collapsed sidebar/focus/200% zoom. Artifacts: `.client-review/logbook/`. `company-attendance-workflows.mjs` now invokes this current runner and includes historical M17 review coverage. Browser transport assertions are not database authorization evidence; native SQL tests provide that proof locally with provider schema doubles. No remote Auth/Storage delivery or deployed acceptance is claimed.
+
+
+Current M17 paper fallback: [user guide, source/evidence rules and rollout](../COMPANY_ATTENDANCE.md). Reviewed M17 must precede the matching client. No live rollout or reset.
+
+M17: `company-attendance-postgres.test.js` covers real RPCs/RLS/Storage policies,
+hours, separate verification, manual-only revisions, immutable private audit,
+company history, failed/expired uploads and multi-connection conflicts/retries.
+`company-attendance.test.jsx` covers local validation, upload/recovery and actual
+PDF generation. `node tests/browser/company-attendance-workflows.mjs` now runs the M18 flow and preserved historical verification with synthetic transport and blocked remote requests.
+Results/PDF/CSV/screenshots are ignored under `.client-review/company-attendance`.
+Final full suite: 2,465 cases in 33 files; lint and build pass. See FIX_PROGRESS.md.
+
+Current M16 follow-up: [evaluation controls and rollout](../EVALUATION_CONTROLS.md). Apply reviewed M15, then M16, before the matching client. Local preparation only; no reset or live rollout.
+
+M16: `evaluation-controls.test.jsx` checks shared native radio semantics and deterministic choices/reasons. `evaluation-controls-postgres.test.js` installs M15, seeds a genuine written draft before M16, then checks real RPC/RLS/grants, server/client catalog parity, exact previews, privacy, legacy retention, immutable adjustment events and audit rollback. `node tests/browser/evaluation-controls-workflows.mjs` checks 8 rendered workflow/layout groups and saves 27 screenshots. Browser runners require the optional local Playwright installation under `.client-review/node_modules` and Chrome/Edge or Playwright Chromium. They disable environment loading and block remote requests. Local full suite: `npm test -- --maxWorkers=2`, 2,443 cases in 31 files passed; lint and production build passed. See FIX_PROGRESS.md for visual limitations and evidence.
+
+M15: `supervisor-postgres.test.js` uses native isolated PostgreSQL for the four-role evaluation/assignment/retirement contracts and atomic retries/audit faults. `node tests/browser/supervisor-workflows.mjs` uses actual React with a synthetic transport and blocked remote requests; 10 groups pass with the current controls. `legacy-install.js` and `legacy-correction-client.js` preserve historical M14 regression coverage only; they are never production imports. Previous M15-only run: 2,425 cases in 29 files.
+
+Current additive M15 upgrade: [Supervisor workflow and rollout](../SUPERVISOR_WORKFLOW.md). Supervisor is authorized; correction mutations and direct Coordinator evaluation creation are retired. Target: `tcntyrwwqzyyqlzdtuer`; no live rollout occurred. Historical cleanup/demo/reset procedures below do not authorize removing current evaluation/correction history.
+
+
 Coordinator follow-up adds `coordinator-postgres.test.js` (native M13 reapplication,
 controlled frozen-audience sends, denied foreign/anonymous/raw writes, sender and
 recipient history after reassignment, audit/audience fault rollback, valid/stale/

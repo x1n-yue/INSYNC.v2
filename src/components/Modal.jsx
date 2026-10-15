@@ -2,7 +2,7 @@ import { useEffect, useId, useRef } from "react";
 import { IconX } from "./Icons";
 import { ToastViewport } from "./Toast";
 
-export default function Modal({ title, onClose, children, width = "460px", busy = false, drawer = false }) {
+export default function Modal({ title, onClose, children, width = "460px", busy = false, drawer = false, className = "" }) {
   const dialog = useRef(null), titleId = useId();
   useEffect(() => {
     const previous = document.activeElement, element = dialog.current;
@@ -19,7 +19,7 @@ export default function Modal({ title, onClose, children, width = "460px", busy 
       onClick={(e) => !busy && e.target === e.currentTarget && onClose()}
     >
       <div
-        className={`dialog-panel w-full rounded-2xl shadow-xl overflow-hidden ${drawer ? "drawer-panel" : ""}`}
+        className={`dialog-panel w-full rounded-2xl shadow-xl overflow-hidden ${drawer ? "drawer-panel" : ""} ${className}`}
         style={{ maxWidth: width, background: "var(--card)", border: "1px solid var(--border)" }}
       >
         <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid var(--border)" }}>

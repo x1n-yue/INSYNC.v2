@@ -1,5 +1,36 @@
 # Remediation decisions
 
+## Supervisor logbook submissions, 2026-10-15
+
+M18 supersedes new Coordinator paper uploads. Supervisor selects an explicitly assigned Active Intern, past covered dates and signed PDF/JPEG/PNG evidence; company and identities come from trusted assignment data. Private versioned drafts submit only to the server-resolved Active assigned Coordinator. Submitted versions never change their evidence or original recipient; return reasons and subsequent versions remain. Current scope and the frozen route both govern Coordinator access. Admin may explicitly reroute unresolved records to the current same-company Coordinator with a reason and audit event.
+
+Coordinator manually reads the evidence and encodes sessions. One explicit Verify & Record operation validates the entire version under existing lifecycle/Intern locks and creates verified ledger records, source links, server-calculated hours, verifier timestamps and immutable audit atomically. No source submission credits any hours. Existing one-session-per-Manila-start-date/16-hour rules remain, including explicit overnight end dates. Exact batch retries are idempotent. Interns read only their ledger results, never submissions or evidence. New Coordinator stage/create grants are retired; historical metadata, evidence, unverified revisions using existing evidence and explicit verification survive. No AI/OCR/offline storage, reset, old migration rewrite or live changes. See [guide and rollout](LOGBOOK_ATTENDANCE.md).
+
+
+## Company Attendance Sheet fallback, 2026-10-14
+
+Paper replaces the proposed offline/PWA attendance approach. M17 adds Coordinator-created unverified closed rows to the existing attendance ledger, with signed private sheet/logbook evidence and explicit later verification. No queue, service worker, new schedule/break deduction or separate hours ledger. Inspection confirms one session per Manila start date and at most 16 hours; those existing constraints remain.
+
+Paper company/Supervisor names are attested by the Coordinator for the attendance date and captured with stable company UUID/current-or-trusted historical association. No historical placement dates or Supervisor account identity are invented. All sheet files remain staff-only; shared access requires every declared participant to remain within staff assignment scope. Interns receive own ledger metadata and verification status only. Unverified manual-only revisions require reasons and immutable before/after events; verified manual records and committed evidence cannot be altered/deleted. Online punches and accomplishments are preserved, and correction requests stay retired. Additive local M17 only; no old migration rewrite, reset, live Auth/Storage change or deployment. See [guide and rollout](COMPANY_ATTENDANCE.md).
+
+## Shared evaluation controls and selectable feedback, 2026-10-14
+
+M16 follows unchanged M15. Native 1–5 radio controls share the existing rubric and score preview. Supervisor uses the existing dashboard container and scoped evaluation styles; the Shell and unrelated pages remain intact. Coordinator choices generate fixed catalog text only from explicitly selected observations, with optional remarks and conflict validation. Existing written drafts stay in written mode until explicitly switched; saved written fields and old explanations are retained privately.
+
+Each changed criterion requires its own evidence/clarification reason or meaningful Other explanation. M16 validates all reasons, records original/final values and actor in immutable private events, checks the exact preview fields against server templates, and retains the M15 score/state/scope checks. Old unchanged written clients remain compatible; generic old-client rating adjustments are blocked. Admin rerouting clears new private draft metadata without deleting source/history. No AI service, live operation or reset. See [implementation and rollout](EVALUATION_CONTROLS.md).
+
+## Supervisor evaluations and correction retirement, 2026-10-14
+
+The user overrides the old three-role restriction and authorizes Supervisor. Instructor remains the OJT Coordinator role. One-company membership and explicit per-intern links retain history; company membership grants no roster access. Admin explicitly ends incompatible links before role/status/company changes. Public metadata remains Pending Intern. No exclusivity, frequency or deadline policy is invented.
+
+M15 separates immutable submitted sources and private review drafts from published finals. Sources retain rubric, original identities/company/Coordinator, assignment, version and server score. Coordinator explanations are manually written, with summary/strengths/improvements/guidance. Changed ratings need an internal reason; final score is server-calculated. Unique source/version references and exact retries prevent duplicate publication. Historical records remain labeled legacy Coordinator evaluations.
+
+Routing never follows assignment changes automatically. Current assigned-intern/company authorization is required alongside the stored route. Explicit Admin rerouting preserves sources, records actors/reason, clears the previous draft and restores original ratings. Company mismatch blocks review/publication/rerouting. Original Supervisor and Admin source access still requires Active status.
+
+Time Log Exception Request UI, counts, selections and review controls are retired. Old correction and direct Coordinator evaluation RPC grants are revoked. History and shared attendance validators/triggers remain; clocking/accomplishments, valid closed verification, hours and DTR exports continue. Earlier correction policies describe historical records/contracts. No manual attendance editing replacement, external AI or notification service is introduced.
+
+User-confirmed target: tcntyrwwqzyyqlzdtuer, verified in read-only CLI project listing. The stale local link remains unchanged/unused. This task applies no live migration, reset or deployment. See [workflow, role matrix and rollout](SUPERVISOR_WORKFLOW.md).
+
 ## Coordinator operations and flexible submission type, 2026-10-13
 
 Explicitly authorized follow-up adds a controlled request-UUID announcement RPC

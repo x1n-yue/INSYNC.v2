@@ -7,11 +7,11 @@ import { disposablePostgres } from '../tests/disposable-postgres.js';
 const read = (name) => readFileSync(new URL(`../supabase/${name}`, import.meta.url), 'utf8');
 const migrations = ['M01_authority.sql', 'M02_trusted_audit.sql', 'M03_attendance_integrity.sql',
   'M04_private_documents_bucket.sql', 'M06_rubric_hours.sql', 'M07_account_lifecycle.sql',
-  'M08_document_versions.sql', 'M10_flexible_submissions.sql', 'M11_admin_history.sql', 'M12_handover_workflows.sql', 'M13_coordinator_operations.sql', 'M14_last_admin_protection.sql'];
+  'M08_document_versions.sql', 'M10_flexible_submissions.sql', 'M11_admin_history.sql', 'M12_handover_workflows.sql', 'M13_coordinator_operations.sql', 'M14_last_admin_protection.sql', 'M15_supervisor_evaluations.sql', 'M16_evaluation_controls.sql', 'M17_company_attendance.sql', 'M18_supervisor_logbook.sql'];
 const baseTables = ['companies', 'course_sections', 'academic_years', 'profiles', 'interns',
   'attendance_logs', 'attendance_exceptions', 'evaluations', 'documents', 'announcements', 'alerts', 'audit_logs'];
-const tables = [...baseTables, 'document_versions', 'document_review_events', 'submissions',
-  'submission_versions', 'submission_files', 'submission_reviews'];
+const tables = [...baseTables, 'logbook_submissions','logbook_versions','logbook_events', 'attendance_sheet_evidence','manual_attendance_events','document_versions', 'document_review_events', 'submissions',
+  'submission_versions', 'submission_files', 'submission_reviews', 'supervisor_assignments', 'supervisor_evaluations', 'evaluation_reviews', 'evaluation_routing_events', 'evaluation_adjustment_events'];
 
 async function catalog(db) {
   await db.query('set search_path=pg_catalog');
@@ -73,6 +73,7 @@ try {
   synthetic = await catalog(db);
 } finally { await fixtureCluster.stop(); }
 
+const attendanceBucket=read('migrations/M17_company_attendance.sql').match(/-- M17_BUCKET_BEGIN:[^\n]*\n([\s\S]*?)-- M17_BUCKET_END/)[1];
 // The legacy catalog differs only in these defaults / equivalent score expression
 // from the seed-free initial catalog. No destructive bootstrap is executed here.
 const legacyColumns = baseline.columns.map((r) => ({ ...r,
@@ -85,8 +86,8 @@ baseColumns.push({ ...baseline.columns.find((r) => r.tab === 'evaluations' && r.
 const baseConstraints = variants([...baseline.constraints, ...synthetic.constraints].map(({ validated: _v, ...r }) => r), JSON.stringify);
 const legacyScore = baseConstraints.find((r) => r.tab === 'evaluations' && r.name === 'evaluations_overall_score_check');
 baseConstraints.push({ ...legacyScore, def: 'CHECK (((overall_score >= (0)::numeric) AND (overall_score <= (100)::numeric)))' });
-const upgradedColumns = target.columns.filter((r) => !baseline.columns.some((b) => b.tab === r.tab && b.name === r.name));
-const upgradedConstraints = target.constraints.filter((r) => !baseline.constraints.some((b) => b.tab === r.tab && b.name === r.name));
+const upgradedColumns = target.columns.filter((r) => !baseline.columns.some((b) => b.tab === r.tab && b.name === r.name && b.def === r.def));
+const upgradedConstraints = target.constraints.filter((r) => !baseline.constraints.some((b) => b.tab === r.tab && b.name === r.name && b.def === r.def));
 const sources = migrations.map((name) => ({ name, sha256: createHash('sha256').update(read(`migrations/${name}`)).digest('hex') }));
 for (const fn of target.functions) {
   fn.source = [...migrations].reverse().find((name) => new RegExp(`create(?: or replace)? function public\\.${fn.name}\\s*\\(`, 'i').test(read(`migrations/${name}`)));
@@ -94,7 +95,7 @@ for (const fn of target.functions) {
 const manifest = { baseTables, tables, baseColumns, baseConstraints, columns: upgradedColumns,
   constraints: upgradedConstraints, indexes: target.indexes, functions: target.functions,
   triggers: target.triggers, policies: target.policies, grants: target.grants, columnGrants: target.columnGrants };
-manifest.baselineChecks = baseline.constraints.filter((r) => r.kind === 'c');
+manifest.baselineChecks = baseline.constraints.filter((r) => r.kind === 'c').map(r => target.constraints.find(t=>t.tab===r.tab&&t.name===r.name)||r);
 // Operator-supplied catalog evidence, 2026-10-13. This is retained in place,
 // not installed on baselines or rewritten into the repository's M11 contract.
 manifest.retainedAcademicYearGuardBody = `begin
@@ -320,6 +321,12 @@ DO $constraints$
 DECLARE m jsonb; r record; actual text; already_valid boolean;
 BEGIN
  SELECT value INTO m FROM pg_temp.insync_update_contract;
+ -- M15 expands the reviewed three-role CHECK without touching rows. Preflight
+ -- accepts only known baseline/final definitions, never arbitrary role drift.
+ IF EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='public.profiles'::regclass AND conname='profiles_role_check'
+ AND pg_get_constraintdef(oid) IS DISTINCT FROM (SELECT e->>'def' FROM jsonb_array_elements(m->'baselineChecks') e WHERE e->>'tab'='profiles' AND e->>'name'='profiles_role_check')) THEN
+  ALTER TABLE public.profiles DROP CONSTRAINT profiles_role_check;
+ END IF;
  -- Baseline CHECKs absent in a supported older catalog can be restored only
  -- by validating existing data. A violation aborts; no value is coerced/deleted.
  FOR r IN SELECT e FROM jsonb_array_elements(m->'baselineChecks') e LOOP
@@ -349,6 +356,7 @@ BEGIN
 END $constraints$;
 
 -- M01/M02/M06/M07/M08/M10/M11 final row/column ACL and RLS contracts.
+${attendanceBucket}
 -- Replace domain policies intentionally: old permissive OR policies defeat scope.
 -- Preserve unrelated tables/functions/provider grants; clear API column grants too.
 DO $security$

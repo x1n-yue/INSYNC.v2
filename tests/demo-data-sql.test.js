@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { beforeAll, afterAll, beforeEach, afterEach, describe, it, expect } from 'vitest';
+import { installLegacyM14 } from './legacy-install';
 import { disposablePostgres } from './disposable-postgres';
 
 const sql = f => readFileSync(new URL(`../supabase/${f}`, import.meta.url), 'utf8');
@@ -22,7 +23,7 @@ async function fixture(client) {
   await client.query(`alter table auth.users add column deleted_at timestamptz,add column email_confirmed_at timestamptz;
     update storage.buckets set file_size_limit=10485760,allowed_mime_types=ARRAY['application/pdf','image/jpeg','image/png'] where id='documents';
     grant select,insert,delete on storage.objects to authenticated;`);
-  await client.query(sql('INSync_Fresh_Install.sql'));
+  await installLegacyM14(client,{initial:true});
   for (const [id,email] of [[A,'fangonbernstain566@gmail.com'],[C,'mangokamen1@gmail.com'],[I,'hhimii.mu@gmail.com']]) {
     await client.query('insert into auth.users(id,email,email_confirmed_at) values($1,$2,now())', [id,email]);
   }
@@ -79,7 +80,7 @@ afterAll(async()=>{ if(cluster)await cluster.stop(); },30000);
 beforeEach(async()=>{ await db.query("begin; set local timezone='UTC'"); });
 afterEach(async()=>{ await db.query('rollback'); });
 
-describe('exact demo SQL on final native PostgreSQL schema',()=>{
+describe('historical demo SQL on M14 native PostgreSQL schema',()=>{
   it('seeds valid weekday evidence, pending checklist, server-scored evaluation and frozen recipients without account/Storage changes',async()=>{
     const before=await identitySnapshot();
     await db.query(seed);

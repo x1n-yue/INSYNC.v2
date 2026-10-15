@@ -13,6 +13,7 @@ import { requestResult } from "../lib/requests";
 import DocumentHistory from "./DocumentHistory";
 import { manilaDate, recordRpc } from "../lib/authority";
 import { elapsedSession, formatBusinessDate, formatClockTime, isOpenSession } from "../lib/attendance";
+import { CompanyAttendancePrint,ManualAttendanceDetails,AttendanceSourceBadge } from './CompanyAttendance';
 import { downloadArtifact, dtrArtifact } from "../lib/exports";
 import { evaluationResult } from "../lib/business";
 import { attendanceEvidence } from "../lib/hours";
@@ -23,7 +24,7 @@ import DateFilters from "./DateFilters";
 import Submissions from "./Submissions";
 import { recoverUpload, uploadDocument } from "../lib/documents";
 import DocumentActions from "./DocumentActions";
-import EvaluationCriteria from "./EvaluationCriteria";
+import { EvaluationFinal } from "./EvaluationWorkflow";
 import AnnouncementsFeed from "./AnnouncementsFeed";
 import ReportsPanel from "./ReportsPanel";
 import Shell from "./Shell";
@@ -58,9 +59,6 @@ function formatTime(d) {
 }
 
 const todayStr = () => manilaDate();
-const inputCls = "w-full text-sm py-2 px-3 rounded-lg border outline-none";
-const inputStyle = { borderColor: "var(--border)", background: "var(--card)", color: "var(--foreground)" };
-
 export default function InternDashboard({ profile, onLogout }) {
   const [evalPeriod, setEvalPeriod] = useState("all");
   const [evalStart, setEvalStart] = useState("");
@@ -84,7 +82,6 @@ export default function InternDashboard({ profile, onLogout }) {
   };
   const [clockBusy, setClockBusy] = useState(false);
   const [clockLoadError, setClockLoadError] = useState(null);
-  const [correctionBusy, setCorrectionBusy] = useState(false);
   const [uploadBusy, setUploadBusy] = useState(null);
   const [recoveryRows, setRecoveryRows] = useState([]);
   const [recoveryBusy, setRecoveryBusy] = useState(false);
@@ -94,13 +91,12 @@ export default function InternDashboard({ profile, onLogout }) {
   const [internInfo, setInternInfo] = useState(null); // { required_hours, companies:{name}, profiles:{full_name} }
   const [dtr, setDtr] = useState([]); // attendance_logs, newest first
   const [evaluationList, setEvaluationList] = useState([]);
-  const [exceptions, setExceptions] = useState([]);
-  const [correctionsError, setCorrectionsError] = useState("");
   const [docs, setDocs] = useState([]);
   const [requirementFilter, setRequirementFilter] = useState('');
   const [weekView, setWeekView] = useState("Weekly");
   const [showWeekPicker, setShowWeekPicker] = useState(false);
   const [dtrFilter, setDtrFilter] = useState("all");
+  const [dtrSource,setDtrSource]=useState('all');
 
   // Live elapsed timer while clocked in
   const [elapsed, setElapsed] = useState("00:00:00");
@@ -109,19 +105,17 @@ export default function InternDashboard({ profile, onLogout }) {
   const [showAccomplModal, setShowAccomplModal] = useState(false);
   const [accomplishment, setAccomplishment] = useState("");
 
-  // Exception form
-  const [exForm, setExForm] = useState({ date: "", endDate: "", claimedIn: "", claimedOut: "", reason: "" });
 
   // Document upload
   const fileInputRefs = useRef({});
 
-  writing.current = clockBusy || correctionBusy || uploadBusy !== null || recoveryBusy;
+  writing.current = clockBusy || uploadBusy !== null || recoveryBusy;
   const loadAll = useCallback(async ({ background = false } = {}) => {
     if (background && (refreshing.current || writing.current)) return;
     const request=++loadSequence.current; refreshing.current=true;
     if(!background) setLoading(true);
     const capture = table => completeRows(supabase, table, profile.id).then(data => ({ data })).catch(error => ({ data: null, error }));
-    const [{ data: internRow, error: internError }, { data: attendanceRows, error: attendanceError }, { data: evalRows, error: evaluationsError }, { data: exceptionRows, error: exceptionError }, { data: docRows, error: docError }, { data: openRow, error: openError }] =
+    const [{ data: internRow, error: internError }, { data: attendanceRows, error: attendanceError }, { data: evalRows, error: evaluationsError }, { data: docRows, error: docError }, { data: openRow, error: openError }] =
       await Promise.all([
         requestResult(supabase
           .from("interns")
@@ -130,7 +124,6 @@ export default function InternDashboard({ profile, onLogout }) {
           .maybeSingle(), "Intern assignment retrieval failed"),
         capture("attendance_logs"),
         capture("evaluations"),
-        requestResult(supabase.from("attendance_exceptions").select("*").eq("intern_id", profile.id).order("created_at", { ascending: false }), "Correction history retrieval failed"),
         capture("documents"),
         requestResult(supabase.from("attendance_logs").select("*").eq("intern_id", profile.id).is("time_out", null).maybeSingle(), "Open session retrieval failed"),
       ]);
@@ -149,8 +142,6 @@ export default function InternDashboard({ profile, onLogout }) {
     setDtr(openRow && !history.some((row) => row.id === openRow.id) ? [openRow, ...history] : history);
     setEvalError(evaluationsError?.message || "");
     setEvaluationList([...(evalRows ?? [])].sort((a,b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")) || b.id.localeCompare(a.id)).map((e) => ({ ...e, profiles: names[e.evaluator_id] })));
-    setCorrectionsError(exceptionError?.message || "");
-    setExceptions(exceptionRows ?? []);
     setDocs(docRows ?? []);
     refreshing.current=false;
     setLoading(false);
@@ -171,7 +162,7 @@ export default function InternDashboard({ profile, onLogout }) {
   // Live elapsed timer
   useEffect(() => {
     if (!isClockedIn || !isOpenSession(todayRow)) {
-      setElapsed(isClockedIn ? "Legacy session · correction required" : "00:00:00");
+      setElapsed(isClockedIn ? "Legacy session · evidence unavailable" : "00:00:00");
       return;
     }
     const id = setInterval(() => {
@@ -206,24 +197,6 @@ export default function InternDashboard({ profile, onLogout }) {
     } finally { setClockBusy(false); }
   };
 
-  const submitException = async () => {
-    if (!exForm.date || !exForm.claimedIn || !exForm.claimedOut || !exForm.reason.trim()) {
-      toast("Please complete all fields", "error");
-      return;
-    }
-    if (correctionBusy) return;
-    setCorrectionBusy(true);
-    const result = await recordRpc(supabase, "submit_correction", {
-      p_date: exForm.date, p_in: exForm.claimedIn, p_out: exForm.claimedOut,
-      p_end: exForm.endDate || exForm.date, p_reason: exForm.reason.trim(),
-    });
-    setCorrectionBusy(false);
-    if (!result.ok) return toast(result.error, "error");
-    loadSequence.current++; refreshing.current=false; setLoading(false);
-    setExceptions((prev) => [result.data, ...prev]);
-    setExForm({ date: "", endDate: "", claimedIn: "", claimedOut: "", reason: "" });
-    toast("Exception request submitted — awaiting instructor review", "info");
-  };
 
   const refreshRecovery = async () => {
     const { data, error } = await requestResult(supabase.rpc("unfinished_document_uploads"), "Upload recovery retrieval failed");
@@ -260,7 +233,7 @@ export default function InternDashboard({ profile, onLogout }) {
   const hoursRequired = metric.target;
   const progress = metric.progress;
   const remainingHours = metric.remaining;
-  const filteredDtr = filterAttendance(dtr, dtrFilter);
+  const filteredDtr = filterAttendance(dtr, dtrFilter).filter(r=>dtrSource==='all'||(dtrSource==='manual'?r.attendance_source==='manual_company_sheet':r.attendance_source!=='manual_company_sheet'));
   const latestEval = evaluationList[0];
   const evaluationRange = dateRange(evalPeriod, evalStart, evalEnd);
   const filteredEvaluations = filterEvaluations(evaluationList, evaluationRange);
@@ -288,7 +261,6 @@ export default function InternDashboard({ profile, onLogout }) {
         {metricsError && <ErrorNotice title="Progress unavailable" onRetry={loadAll}>{metricsError}</ErrorNotice>}
         {loading && <LoadingState />}
 
-        {!loading && correctionsError && tab === "attendance" && <ErrorNotice title="Correction requests unavailable" onRetry={loadAll}>{correctionsError}</ErrorNotice>}
 
         {/* ── DASHBOARD ─────────────────────────────────────────────────── */}
         {!loading && tab === "dashboard" && (
@@ -400,10 +372,8 @@ export default function InternDashboard({ profile, onLogout }) {
                           </div>
                         </div>
                       </div>
-                      <EvaluationCriteria criteria={ev.competencies} />
-                      {ev.feedback && (
-                        <p className="text-xs mt-2 italic" style={{ color: "var(--muted-foreground)" }}>"{ev.feedback}"</p>
-                      )}
+                      <EvaluationFinal evaluation={ev} />
+
                     </div>
                   ))}
                 </div>
@@ -417,7 +387,7 @@ export default function InternDashboard({ profile, onLogout }) {
           <>
             <PageHeader eyebrow="Intern workspace" title="My Attendance"
               description={`${internInfo?.companies?.name ?? "Company unassigned / unavailable"} - Instructor: ${internInfo?.profiles?.full_name ?? "Unassigned / unavailable"}`}
-              actions={<>              <button
+              actions={<><CompanyAttendancePrint internId={profile.id}/>              <button
                 onClick={() => (isClockedIn ? setShowAccomplModal(true) : handleClockIn())}
                 disabled={clockBusy || Boolean(clockLoadError) || Boolean(todayRow?.time_out)}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all shrink-0"
@@ -449,9 +419,10 @@ export default function InternDashboard({ profile, onLogout }) {
 
             {/* DTR table */}
             <div className="ui-card rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-              <div className="px-4 py-3 flex items-center justify-between gap-3" style={{ borderBottom: "1px solid var(--border)" }}>
+              <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-3" style={{ borderBottom: "1px solid var(--border)" }}>
                 <span className="text-sm font-semibold">Daily Time Record (DTR)</span>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="text-xs">Attendance source<select aria-label="Attendance source" className="form-control" value={dtrSource} onChange={e=>setDtrSource(e.target.value)}><option value="all">All sources</option><option value="online">Online / legacy</option><option value="manual">Company Attendance Sheet</option></select></label>
                   <div className="flex rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
                     {dtrFilters.map((f) => (
                       <button key={f} onClick={() => setDtrFilter(f)}
@@ -506,7 +477,9 @@ export default function InternDashboard({ profile, onLogout }) {
                             {d.accomplishment ? <span style={{ color: "var(--foreground)" }}>{d.accomplishment}</span> : "—"}
                           </td>
                           <td className="px-4 py-3">
+                            <div className="text-xs muted-copy mb-2"><AttendanceSourceBadge row={d}/></div>
                             <StatusBadge status={recordStatus} />
+                            {d.attendance_source==='manual_company_sheet'&&<div className="mt-2"><ManualAttendanceDetails row={d}/></div>}
                           </td>
                         </tr>
                       );
@@ -516,85 +489,7 @@ export default function InternDashboard({ profile, onLogout }) {
               </div>
             </div>
 
-            {/* Exception Request */}
-            <div className="ui-card rounded-xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-              <div className="px-4 py-3" style={{ borderBottom: "1px solid var(--border)" }}>
-                <div className="flex items-center gap-2">
-                  <IconAlertTriangle size={14} style={{ color: "var(--warning)" }} />
-                  <span className="text-sm font-semibold">Time Log Exception Request</span>
-                </div>
-                <p className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>Submit a correction request for missed or incorrect clock entries.</p>
-              </div>
-              <div className="p-4 space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label htmlFor="correction-date" className="block text-xs font-medium mb-1" style={{ color: "var(--foreground)" }}>Date</label>
-                    <input id="correction-date" disabled={correctionBusy} type="date" value={exForm.date} onChange={(e) => setExForm((f) => ({ ...f, date: e.target.value }))}
-                      className={inputCls} style={inputStyle} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label htmlFor="correction-clock-in" className="block text-xs font-medium mb-1" style={{ color: "var(--foreground)" }}>Clock In</label>
-                      <input id="correction-clock-in" disabled={correctionBusy} type="time" value={exForm.claimedIn} onChange={(e) => setExForm((f) => ({ ...f, claimedIn: e.target.value }))}
-                        className={inputCls} style={inputStyle} />
-                    </div>
-                    <div>
-                      <label htmlFor="correction-clock-out" className="block text-xs font-medium mb-1" style={{ color: "var(--foreground)" }}>Clock Out</label>
-                      <input id="correction-clock-out" disabled={correctionBusy} type="time" value={exForm.claimedOut} onChange={(e) => setExForm((f) => ({ ...f, claimedOut: e.target.value }))}
-                        className={inputCls} style={inputStyle} />
-                    </div>
-                  </div>
-                  <div>
-                    <label htmlFor="correction-end-date" className="block text-xs font-medium mb-1">Clock-out date (overnight only)</label>
-                    <input id="correction-end-date" disabled={correctionBusy} type="date" value={exForm.endDate} onChange={(e) => setExForm((f) => ({ ...f, endDate: e.target.value }))}
-                      className={inputCls} style={inputStyle} />
-                  </div>
-                </div>
-                <div>
-                  <label htmlFor="correction-reason" className="block text-xs font-medium mb-1" style={{ color: "var(--foreground)" }}>Reason / Explanation</label>
-                  <textarea id="correction-reason" disabled={correctionBusy} rows={2} value={exForm.reason} onChange={(e) => setExForm((f) => ({ ...f, reason: e.target.value }))}
-                    placeholder="Explain why a correction is needed..."
-                    className="w-full text-sm py-2 px-3 rounded-lg border outline-none resize-none"
-                    style={inputStyle} />
-                </div>
-                <div className="flex justify-end">
-                  <button onClick={submitException} disabled={correctionBusy} className="text-sm px-4 py-2 rounded-lg font-semibold"
-                    style={{ background: "var(--primary)", color: "#fff" }}>
-                    Submit Request
-                  </button>
-                </div>
-              </div>
 
-              {exceptions.length > 0 && (
-                <div style={{ borderTop: "1px solid var(--border)" }}>
-                  <div className="px-4 py-2.5">
-                    <span className="text-xs font-medium" style={{ color: "var(--muted-foreground)" }}>My Submitted Requests</span>
-                  </div>
-                  {exceptions.map((ex) => (
-                    <div key={ex.id} className="px-4 py-3 flex items-start justify-between gap-3"
-                      style={{ borderTop: "1px solid var(--border)" }}>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-medium">
-                          {formatBusinessDate(ex.log_date, { month: "short", day: "numeric" })} · {ex.claimed_time_in} – {ex.claimed_time_out}
-                          {ex.claimed_end_date && ex.claimed_end_date !== ex.log_date && <> (ends {formatBusinessDate(ex.claimed_end_date)})</>}
-                        </div>
-                        <div className="text-xs mt-0.5 truncate" style={{ color: "var(--muted-foreground)" }}>{ex.reason}</div>
-                        {ex.review_note && <div className="text-xs mt-1 break-words">Review note: {ex.review_note}</div>}
-                        <div className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>
-                          Submitted: {new Date(ex.created_at).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" , timeZone: "Asia/Manila" })}
-                        </div>
-                      </div>
-                      <span className="text-xs px-2 py-0.5 rounded-full shrink-0"
-                        style={ex.status === "Approved" ? { background: "var(--success-bg)", color: "var(--success)" }
-                          : ex.status === "Rejected" ? { background: "var(--danger-bg)", color: "var(--danger)" }
-                          : { background: "var(--warning-bg)", color: "var(--warning)" }}>
-                        {ex.status}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
           </>
         )}
 
@@ -709,7 +604,7 @@ export default function InternDashboard({ profile, onLogout }) {
                       <div className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>
                         OJT Coordinator: {ev.profiles?.full_name || ev.evaluator_id || "Unavailable"} · {ev.created_at && Number.isFinite(Date.parse(ev.created_at)) ? new Date(ev.created_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", timeZone: "Asia/Manila" }) : "Date unavailable"}
                       </div>
-                      <EvaluationCriteria criteria={ev.competencies} />
+                      <EvaluationFinal evaluation={ev} />
                       {ev.feedback && (
                         <p className="text-sm mt-2 italic" style={{ color: "var(--muted-foreground)" }}>"{ev.feedback}"</p>
                       )}

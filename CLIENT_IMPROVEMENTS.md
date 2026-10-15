@@ -1,5 +1,15 @@
 # Client improvements delivery — 2026-10-09
 
+Current workflow: [Supervisor logbook submission and M18 rollout](LOGBOOK_ATTENDANCE.md). Supervisor uploads signed paper evidence; the assigned Coordinator encodes and uses **Verify & Record Attendance** once. This supersedes new Coordinator uploads under M17. Historical records remain unchanged. Local only: no live migration, reset or deployment.
+
+
+Previous M17 fallback (new-entry workflow superseded by M18): [Company Attendance Sheet guide and M17 rollout](COMPANY_ATTENDANCE.md). This replaces the offline/PWA attendance proposal. Local preparation only; no live migration, reset or deployment.
+
+Current follow-up: [shared ratings, selectable feedback and Supervisor layout](EVALUATION_CONTROLS.md). Additive M16 and the matching client are prepared locally; M15 remains unchanged. No live migration, reset or deployment was performed.
+
+Current 2026-10-14 deliverable: [Supervisor evaluations and correction retirement](SUPERVISOR_WORKFLOW.md). The user authorizes a fourth role and an additive upgrade for deployed project `tcntyrwwqzyyqlzdtuer`. M15 and the new client are prepared locally; no live schema change, reset or deployment was performed. Older correction-request/new-evaluation and three-role guidance below is historical and superseded.
+
+
 The complete nine-page `INSYNC.UI.Mock(1).pdf` was read, rendered and visually
 reviewed before editing. The supplied screenshot and PDF were preserved.
 Starting checkout is `3c057ee9335ef7cecb3be750e061d3caf9999c1c`, matching the
@@ -26,7 +36,7 @@ Instructor-created requirement templates are not required or introduced.
 ## Implemented behavior
 
 - Intern dashboard retains assignment, logged/verified hours, target/progress,
-  charts, evaluations, announcements and corrections. Today's Attendance uses
+  charts, published evaluations and announcements. Today's Attendance uses
   the existing server clock RPCs and opens the existing accomplishment modal.
   Ordinary clock-out still does not verify hours.
 - Instructor roster/progress searches name, student ID and company, filters real
@@ -38,7 +48,7 @@ Instructor-created requirement templates are not required or introduced.
   selection says that it spans pages/filters; page selection adds only displayed
   Pending items up to the server's 100-item limit. Individual outcomes and failed
   note drafts remain preserved. Dashboard attention is derived from existing
-  risk, pending corrections and unfinished/revision documents, showing at most
+  risk and unfinished/revision documents, showing at most
   five interns. It creates no stored alerts and adds no risk threshold.
 - Intern evaluations offer All, This Week, This Month and inclusive Custom range.
   Dates are Asia/Manila, weeks Monday–Sunday. Invalid/reversed ranges show an

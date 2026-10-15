@@ -1,6 +1,7 @@
 import { attendanceEvidence } from "./hours";
 export { attendanceEvidence } from "./hours";
 import { manilaDate } from "./authority";
+import { attendanceSource } from './companyAttendance';
 
 export const EXPORT_LIMIT = 50000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -104,15 +105,15 @@ export async function auditArtifact(client, now = new Date()) {
 export async function dtrArtifact(client, ownerId, now = new Date()) {
   if (!UUID.test(ownerId)) throw new Error("Intern identity required");
   await requireProfile(client, "intern", ownerId);
-  const records = await readExportRows(client, "attendance_logs", "id,intern_id,log_date,time_in,time_out,clocked_in_at,clocked_out_at,hours,verified,verified_by,accomplishment", ownerId);
+  const records = await readExportRows(client, "attendance_logs", "id,intern_id,log_date,time_in,time_out,clocked_in_at,clocked_out_at,hours,verified,verified_by,accomplishment,attendance_source", ownerId);
   await requireProfile(client, "intern", ownerId);
   records.sort((a, b) => a.log_date.localeCompare(b.log_date) || a.id.localeCompare(b.id));
   const headers = ["record_id", "intern_id", "Manila_start_date", "time_in_Manila", "time_out_Manila", "clocked_in_at", "clocked_out_at",
-    "stored_hours", "logged_hours", "verified_hours", "record_state", "verification", "verified_by", "accomplishment"];
+    "stored_hours", "logged_hours", "verified_hours", "record_state", "verification", "verified_by", "accomplishment", "attendance_source"];
   const rows = records.map((r) => {
     const evidence = attendanceEvidence(r, now);
     return [r.id, r.intern_id, r.log_date, r.time_in, r.time_out, r.clocked_in_at, r.clocked_out_at,
-      r.hours, evidence.logged, evidence.verified, evidence.state, evidence.verification, r.verified_by, r.accomplishment];
+      r.hours, evidence.logged, evidence.verified, evidence.state, evidence.verification, r.verified_by, r.accomplishment, attendanceSource(r)];
   });
   return { blob: new Blob([csvText(headers, rows)], { type: "text/csv;charset=utf-8" }), filename: `insync-dtr-all-${manilaDate(now)}.csv`, count: rows.length };
 }

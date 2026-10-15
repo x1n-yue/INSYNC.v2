@@ -1,5 +1,15 @@
 # Consolidated existing-database update
 
+Current workflow: [Supervisor logbook submission and M18 rollout](../LOGBOOK_ATTENDANCE.md). Supervisor uploads signed paper evidence; the assigned Coordinator encodes and uses **Verify & Record Attendance** once. This supersedes new Coordinator uploads under M17. Historical records remain unchanged. Local only: no live migration, reset or deployment.
+
+
+Historical M17 paper fallback: [user guide, source/evidence rules and rollout](../COMPANY_ATTENDANCE.md). M17 is a prerequisite to M18; M18 must precede the current matching client. No live rollout or reset.
+
+Current M16 follow-up: [evaluation controls and rollout](../EVALUATION_CONTROLS.md). Apply reviewed M15, then M16, before the matching client. Local preparation only; no reset or live rollout.
+
+Current additive M15 upgrade: [Supervisor workflow and rollout](../SUPERVISOR_WORKFLOW.md). Supervisor is authorized; correction mutations and direct Coordinator evaluation creation are retired. Target: `tcntyrwwqzyyqlzdtuer`; no live rollout occurred. Historical cleanup/demo/reset procedures below do not authorize removing current evaluation/correction history.
+
+
 `INSync_Consolidated_Update.sql` is a standalone, manually executed **existing
 database** updater. It installs the latest contracts used by this checkout; it
 does not replay the original files or assert that any live project is updated.
@@ -21,6 +31,10 @@ No live Supabase connection or migration execution was performed in producing it
 | M12 handover workflows | Idempotent Admin custom requirements, assigned-staff verification of valid closed attendance with expected instants, explicit atomic current-year configuration with a single-current index/protected marker. Nullable legacy metadata column and prospective first-replacement snapshots, scoped private access and cleanup protection; no backfill, inferred approval/version or automatic rollover. |
 | M13 Coordinator operations | Controlled idempotent announcement RPC with atomic frozen recipients/audit, sender/recipient SELECT repair and denied direct browser writes; repeats the expected-timestamp M12 attendance verification contract independently of cohort changes. |
 | M14 last Admin | Preserves the reviewed existing last-Active-Admin guard in the current migration set; no account backfill or new role. |
+
+| M15 Supervisor workflow | Four effective roles, explicit company/intern assignments, private immutable source/review routing and published finals, retained history, revoked correction/direct Coordinator evaluation mutation grants. |
+| M16 evaluation controls | Private selectable feedback/remarks and written-draft retention, deterministic preview equality, explicit per-criterion adjustment reasons and immutable adjustment history; hardened old writer and controlled v2 RPC. |
+| M17 paper fallback | Existing-ledger manual attendance, signed private evidence and participant scope, explicit verification, versioned unverified revisions and immutable provenance/audit. Existing daily/interval rules and retired corrections preserved. |
 
 The latest definition wins where M02/M03 replace M01 review/clock functions and
 M10 extends M08 private-object helpers. Superseded broad evaluation/audit writes
@@ -96,11 +110,11 @@ columns, keys, foreign keys and types. Supported baseline default variants inclu
 legacy Active/default On Track and the seed-free Pending baseline; the final
 signup trigger always explicitly writes Intern/Pending. Core missing tables,
 columns, keys and foreign keys require restore/reconciliation, not speculative
-recreation over existing accounts. The six additional evidence tables and all
+recreation over existing accounts. The additional evidence/workflow tables and all
 additive migration columns are installed when absent. Missing baseline CHECKs
 are restored only by validating existing values; failures roll everything back.
 
-Baseline, intermediate M01–M14 states, and the final catalog can be updated.
+Baseline, intermediate M01–M18 states, and the final catalog can be updated.
 Independent M04 and deferred M05/M09 states are supported. A partially installed
 new evidence table is acceptable only when existing definitions match and it is
 empty. A populated partial table stops rather than inventing identities, version
@@ -210,7 +224,7 @@ Store before/after inventories privately. Include all existing baseline and six
 new table counts in reconciliation; counts alone do not prove value preservation.
 
 ```sql
--- All 18 managed tables: trusted ownership, RLS enabled; no forced RLS.
+-- All 28 managed tables: trusted ownership, RLS enabled; no forced RLS.
 SELECT n.nspname, c.relname, pg_catalog.pg_get_userbyid(c.relowner) AS owner,
        c.relrowsecurity, c.relforcerowsecurity
 FROM pg_catalog.pg_class c
@@ -219,10 +233,11 @@ WHERE n.nspname='public' AND c.relname IN
  ('companies','course_sections','academic_years','profiles','interns',
   'attendance_logs','attendance_exceptions','evaluations','documents',
   'announcements','alerts','audit_logs','document_versions','document_review_events',
-  'submissions','submission_versions','submission_files','submission_reviews')
+  'submissions','submission_versions','submission_files','submission_reviews','supervisor_assignments','supervisor_evaluations','evaluation_reviews','evaluation_routing_events','evaluation_adjustment_events','attendance_sheet_evidence','manual_attendance_events','logbook_submissions','logbook_versions','logbook_events')
 ORDER BY c.relname;
 
--- Important caller signatures: each RPC must resolve; no arbitrary overloads.
+-- Important signatures: retired routines still resolve for internal/history dependencies,
+-- but correction/direct Coordinator evaluation EXECUTE must be false for API roles.
 SELECT signature, pg_catalog.to_regprocedure(signature) AS installed
 FROM unnest(ARRAY[
  'public.my_profile()', 'public.related_profile_names(uuid[])',
@@ -232,6 +247,24 @@ FROM unnest(ARRAY[
  'public.submit_correction(date,time without time zone,time without time zone,date,text)',
  'public.review_exceptions(uuid[],text,text)',
  'public.submit_evaluation(uuid,jsonb,text,uuid)',
+ 'public.supervisor_roster(uuid,integer)',
+ 'public.admin_set_supervision(uuid,uuid,boolean)',
+ 'public.save_supervisor_evaluation(uuid,uuid,date,jsonb,text,integer,boolean)',
+ 'public.save_evaluation_review(uuid,integer,text,text,text,text,jsonb,text,boolean)',
+ 'public.admin_reroute_evaluation(uuid,uuid,text,integer)',
+ 'public.logbook_queue(uuid,integer)',
+ 'public.save_logbook_draft(uuid,uuid,date,date,text,uuid[],integer,integer)',
+ 'public.stage_logbook_evidence(uuid,uuid,text,text,bigint)',
+ 'public.submit_logbook(uuid,integer,integer)',
+ 'public.return_logbook(uuid,integer,integer,text)',
+ 'public.verify_record_logbook(uuid,integer,integer,uuid,jsonb,boolean)',
+ 'public.admin_reroute_logbook(uuid,uuid,integer,integer,text)',
+ 'public.attendance_sheet_context(uuid)',
+ 'public.stage_attendance_sheet(uuid,uuid,uuid[],text,text,bigint)',
+ 'public.finish_attendance_sheet(uuid)', 'public.cancel_attendance_sheet(uuid)',
+ 'public.record_manual_attendance(uuid,uuid,timestamptz,timestamptz,uuid,jsonb)',
+ 'public.revise_manual_attendance(uuid,integer,timestamptz,timestamptz,uuid,jsonb,text)',
+ 'public.verify_manual_attendance(uuid,integer,uuid,timestamptz,timestamptz,boolean)',
  'public.attach_standard_docs(uuid)',
  'public.stage_document_upload(uuid,text,text,bigint,bigint)',
  'public.finalize_document_upload(uuid)', 'public.cancel_document_upload(uuid)',
@@ -248,7 +281,7 @@ FROM unnest(ARRAY[
 ]) AS t(signature);
 
 -- Review every helper/RPC definition, fixed search_path and EXECUTE ACL.
--- Expect 56 managed routines; unrelated extension routines may also be present.
+-- Expect 100 managed routines; unrelated extension routines may also be present.
 SELECT p.oid::regprocedure, pg_catalog.pg_get_userbyid(p.proowner) AS owner,
        p.prosecdef, p.proconfig, p.proacl,
        pg_catalog.has_function_privilege('anon',p.oid,'EXECUTE') AS anon_execute,
@@ -280,26 +313,26 @@ FROM pg_catalog.pg_constraint x JOIN pg_catalog.pg_class c ON c.oid=x.conrelid
 JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
 WHERE n.nspname='public' ORDER BY c.relname,x.conname;
 
--- Ten standalone migration indexes must be present, ready, valid and correct.
+-- Eleven standalone migration indexes must be present, ready, valid and correct.
 SELECT t.relname AS table_name,i.relname AS index_name,x.indisready,x.indisvalid,
        pg_catalog.pg_get_indexdef(i.oid) AS definition
 FROM pg_catalog.pg_index x JOIN pg_catalog.pg_class i ON i.oid=x.indexrelid
 JOIN pg_catalog.pg_class t ON t.oid=x.indrelid
-WHERE i.relname ~ '^m(03|06|10|11|12)_'
+WHERE i.relname ~ '^m(03|06|10|11|12|15)_'
  AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint z WHERE z.conindid=i.oid)
 ORDER BY i.relname;
 
--- 31 managed noninternal triggers, enabled O, including signup and deferred guards.
+-- 51 managed noninternal triggers, enabled O, including signup and deferred guards.
 SELECT n.nspname,c.relname,t.tgname,t.tgenabled,t.tgdeferrable,t.tginitdeferred,
        pg_catalog.pg_get_triggerdef(t.oid) AS definition
 FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid
 JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
 WHERE NOT t.tgisinternal AND
- ((n.nspname='public' AND t.tgname ~ '^m(01|02|03|07|08|10|11|14)_')
+ ((n.nspname='public' AND t.tgname ~ '^m[0-9]{2}_')
   OR (n.nspname='auth' AND t.tgname='on_auth_user_created'))
 ORDER BY n.nspname,c.relname,t.tgname;
 
--- 51 managed policies + reviewed other-bucket policies.
+-- 78 managed policies + reviewed other-bucket policies.
 SELECT schemaname,tablename,policyname,permissive,roles,cmd,qual,with_check
 FROM pg_catalog.pg_policies
 WHERE schemaname='public' OR (schemaname='storage' AND tablename='objects')
@@ -314,7 +347,7 @@ ORDER BY table_name,column_name,grantee,privilege_type;
 -- information_schema can include inherited table privileges on columns;
 -- inspect pg_attribute.attacl for independent column grants as needed.
 
-SELECT id,public,file_size_limit,allowed_mime_types FROM storage.buckets WHERE id='documents';
+SELECT id,public,file_size_limit,allowed_mime_types FROM storage.buckets WHERE id IN ('documents','attendance-evidence');
 -- Expect false, 10485760, precisely PDF/JPEG/PNG. Reconcile object inventory.
 SELECT bucket_id,count(*) FROM storage.objects GROUP BY bucket_id ORDER BY bucket_id;
 ```
@@ -325,13 +358,13 @@ COMMIT**. Constraint/index gates inspect their actual definitions and validity.
 
 ## Migration history and future tooling
 
-The project uses human M01–M14 labels and a reviewed operator ledger; these are
+The project uses human M01–M17 labels and a reviewed operator ledger; these are
 not automatic Supabase CLI timestamp migrations. This file **does not write
 `supabase_migrations.schema_migrations` or mark originals applied**. Record its
 SHA256, checkout revision, operator, before/after inventories, verification results
 and the separate pending/completed M05/M09 gates in your private ledger.
 
-Do not subsequently replay M01–M14 or blindly use `db push` against this project.
+Do not subsequently replay M01–M17 or blindly use `db push` against this project.
 Before CLI adoption, reconcile any existing CLI history with verified catalog
 effects and the manual ledger. Prepare a reviewed timestamped baseline/adoption
 plan; use migration-history repair only after each represented effect is actually
@@ -399,7 +432,7 @@ Historical validation before M12, 2026-10-13 (current handover results are in
   retest; the final complete sequential suite passed. No checks were weakened.
 
 The regenerated handover catalog contains 18 managed tables, 56 fixed-search-path routines,
-51 managed policies, 30 managed triggers and ten standalone migration indexes
+75 managed policies, 30 managed triggers and ten standalone migration indexes
 (in addition to constraint-backed indexes). Original values and record counts
 were preserved for synthetic historical accounts, assignments, attendance,
 documents, versions, reviews, evaluations, announcements, audit events and

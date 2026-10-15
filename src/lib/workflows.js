@@ -1,5 +1,5 @@
 import { recordRpc } from "./authority";
-import { requiredHours, rubricScore } from "./business";
+import { requiredHours } from "./business";
 import { readExportRows } from "./exports";
 
 export async function completeRows(client, table, ownerId, columns = "*") {
@@ -17,10 +17,6 @@ export function saveAssignment(client, internId, form) {
   if (hours === null) return Promise.resolve({ ok: false, data: null, error: "Required hours must be >0, <=10000, with at most two decimal places" });
   return recordRpc(client, "admin_set_assignment", { p_id: internId, p_instructor_id: form.instructor_id || null,
     p_company_id: form.company_id || null, p_section_id: form.section_id || null, p_required_hours: hours });
-}
-export function saveEvaluation(client, internId, criteria, feedback, submissionId) {
-  if (rubricScore(criteria) === null || feedback.length > 500 || !submissionId) return Promise.resolve({ ok: false, data: null, error: "Complete all four criteria; feedback maximum 500 characters" });
-  return recordRpc(client, "submit_evaluation", { p_intern_id: internId, p_criteria: criteria, p_feedback: feedback, p_submission_id: submissionId });
 }
 export async function announcementFeed(client) {
   try { return { ok: true, data: await completeRows(client, "announcements"), error: null }; }

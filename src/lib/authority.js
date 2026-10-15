@@ -13,26 +13,6 @@ export async function recordRpc(client, name, args = {}) {
   }
 }
 
-export async function reviewCorrections(client, ids, decision, note = null) {
-  const unique = [...new Set(ids)];
-  if (!unique.length) return [];
-  const failed = (error) => unique.map((id) => ({ id, ok: false, data: null, error }));
-  try {
-    const { data, error } = await client.rpc("review_exceptions", { p_ids: unique, p_decision: decision, p_note: note });
-    if (error) return failed(error.message);
-    // Reject missing, duplicate, foreign or inconsistent results. A transport
-    // success alone is never evidence that all selected requests were reviewed.
-    if (!Array.isArray(data) || data.length !== unique.length || new Set(data.map((r) => r.id)).size !== unique.length
-      || data.some((r) => !unique.includes(r.id) || typeof r.ok !== "boolean"
-        || (r.ok && (r.data?.id !== r.id || r.data?.status !== decision)) || (!r.ok && !r.error))) {
-      return failed("Incomplete review response; refresh before retrying.");
-    }
-    return unique.map((id) => data.find((r) => r.id === id));
-  } catch (error) {
-    return failed(error.message || "Review request failed; refresh before retrying.");
-  }
-}
-
 export function manilaDate(instant = new Date()) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).format(instant);
 }

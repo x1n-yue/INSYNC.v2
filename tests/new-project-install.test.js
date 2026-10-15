@@ -6,7 +6,7 @@ import { disposablePostgres } from './disposable-postgres';
 const read = f => readFileSync(new URL(`../supabase/${f}`, import.meta.url), 'utf8');
 // Own each outer transaction; the installer's contents execute within it.
 const install = read('INSync_Fresh_Install.sql').replace(/^BEGIN;\s*$/m, '').replace(/^COMMIT;\s*$/m, '');
-const bootstrap = [...read('INSync_New_Project_Setup_README.md').matchAll(/```sql\n([\s\S]*?)```/g)]
+const bootstrap = [...read('INSync_New_Project_Setup_README.md').matchAll(/```sql\r?\n([\s\S]*?)```/g)]
   .map(match => match[1]).find(block => block.includes('owner_id uuid'))
   .replace(/^begin;\s*$/m, '').replace(/^commit;\s*$/m, '');
 let cluster, db;
@@ -26,12 +26,12 @@ describe('new-project fresh installation preconditions', () => {
   it('installs on an empty provider baseline, accepts reordered exact MIME types and creates no accounts', async () => {
     await db.query(install);
     expect((await db.query('select count(*)::int n from public.profiles')).rows[0].n).toBe(0);
-    expect((await db.query("select count(*)::int n from pg_class where relnamespace='public'::regnamespace and relkind='r' and relrowsecurity")).rows[0].n).toBe(18);
-    expect((await db.query("select count(*)::int n from pg_proc where pronamespace='public'::regnamespace")).rows[0].n).toBe(56);
-    expect((await db.query("select count(*)::int n from pg_policies where schemaname='public'")).rows[0].n).toBe(43);
-    expect((await db.query("select count(*)::int n from pg_policies where schemaname='storage'")).rows[0].n).toBe(8);
+    expect((await db.query("select count(*)::int n from pg_class where relnamespace='public'::regnamespace and relkind='r' and relrowsecurity")).rows[0].n).toBe(28);
+    expect((await db.query("select count(*)::int n from pg_proc where pronamespace='public'::regnamespace")).rows[0].n).toBe(100);
+    expect((await db.query("select count(*)::int n from pg_policies where schemaname='public'")).rows[0].n).toBe(62);
+    expect((await db.query("select count(*)::int n from pg_policies where schemaname='storage'")).rows[0].n).toBe(16);
     expect((await db.query("select count(*)::int n from pg_trigger where tgrelid='auth.users'::regclass and tgname='on_auth_user_created' and tgenabled='O'")).rows[0].n).toBe(1);
-    expect((await db.query("select count(*)::int n from pg_trigger t join pg_class c on c.oid=t.tgrelid where c.relnamespace='public'::regnamespace and not t.tgisinternal")).rows[0].n).toBe(30);
+    expect((await db.query("select count(*)::int n from pg_trigger t join pg_class c on c.oid=t.tgrelid where c.relnamespace='public'::regnamespace and not t.tgisinternal")).rows[0].n).toBe(50);
     // Execute the published read-only diagnostics against the installed catalog.
     await db.query(read('INSync_New_Project_Verify.sql').replace(/^BEGIN READ ONLY;\s*$/m, '').replace(/^COMMIT;\s*$/m, ''));
     const [row] = (await db.query(`select

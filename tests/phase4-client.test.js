@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { documentLink, recoverUpload, uploadDocument, validateDocument } from "../src/lib/documents";
-import { announcementFeed, saveAssignment, saveEvaluation } from "../src/lib/workflows";
+import { saveEvaluation } from "./legacy-correction-client";
+import { announcementFeed, saveAssignment } from "../src/lib/workflows";
 
 const internId="00000000-0000-4000-8000-000000000004", docId="00000000-0000-4000-8000-000000000100", uploadId="00000000-0000-4000-8000-000000000101";
 const doc={id:docId,intern_id:internId,upload_version:1,review_revision:2};

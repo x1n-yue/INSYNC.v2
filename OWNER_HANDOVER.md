@@ -1,5 +1,17 @@
 # INSync owner acceptance and operating guide
 
+M18 local completion, 2026-10-15: **2,501 tests / 36 files passed**, lint/build passed; **7 browser groups / 18 screenshots / 0 page errors** with mocked transports, native isolated PostgreSQL authorization/upgrade tests and unclipped3-page A4 PDF checks. Live Auth/Storage/rollout remain unverified and unauthorized for automatic execution. See [guide](LOGBOOK_ATTENDANCE.md) and FIX_PROGRESS.md.
+
+Current workflow: [Supervisor logbook submission and M18 rollout](LOGBOOK_ATTENDANCE.md). Supervisor uploads signed paper evidence; the assigned Coordinator encodes and uses **Verify & Record Attendance** once. This supersedes new Coordinator uploads under M17. Historical records remain unchanged. Local only: no live migration, reset or deployment.
+
+
+Previous M17 fallback (new-entry workflow superseded by M18): [Company Attendance Sheet guide and M17 rollout](COMPANY_ATTENDANCE.md). This replaces the offline/PWA attendance proposal. Local preparation only; no live migration, reset or deployment.
+
+Current follow-up: [shared ratings, selectable feedback and Supervisor layout](EVALUATION_CONTROLS.md). Additive M16 and the matching client are prepared locally; M15 remains unchanged. No live migration, reset or deployment was performed.
+
+Current 2026-10-14 deliverable: [Supervisor evaluations and correction retirement](SUPERVISOR_WORKFLOW.md). The user authorizes a fourth role and an additive upgrade for deployed project `tcntyrwwqzyyqlzdtuer`. M15 and the new client are prepared locally; no live schema change, reset or deployment was performed. Older correction-request/new-evaluation and three-role guidance below is historical and superseded.
+
+
 Latest update, 2026-10-14: [authorized test-data reset and live database rebuild](supabase/INSync_Reset_Rebuild_README.md)
 completed, preserving Auth/Storage and reconciling established account roles.
 The current catalog includes M14's last-Active-Admin protection. Live SQL/anonymous
@@ -98,7 +110,7 @@ Provision the first Admin using the exact Auth-verified UUID and trusted operato
 procedure in [WEB_SETUP.md](WEB_SETUP.md); do not use guessed identifiers or
 public registration metadata. Subsequent staff can register, then an authorized
 Admin changes their role/status in Account Management. Roles are Admin,
-Instructor (including OJT Coordinator) and Intern. There is no Supervisor role.
+Instructor (OJT Coordinator), Supervisor and Intern. See SUPERVISOR_WORKFLOW.md for assignment and review steps.
 Keep another authorized Admin available before restricting the operating Admin;
 the system does not promise last-Admin lockout prevention.
 
@@ -139,13 +151,10 @@ Admin walkthrough:
 2. **Progress Tracker:** inspect logged and verified hours against each saved
    target. Unknown evidence is not zero or completion. Focus/visible-minute
    refresh updates metadata; refresh is not a live subscription guarantee.
-3. **Evaluations:** select an assigned Intern, rate all four criteria 1–5 and
-   submit feedback. Server weights are 25/35/20/20; the stored authoritative
-   overall score is shown. Preserve failed drafts and use date/history filters.
+3. **Evaluations:** review a routed Supervisor source; manually write the student-facing explanation, strengths, improvements and guidance. Preserve ratings or explain adjustments. Save Draft, Preview and Publish to Intern; see SUPERVISOR_WORKFLOW.md.
 4. **DTR Review:** inspect closed attendance, accomplishments and evidence;
    **Verify hours** authorizes trustworthy closed records only. Ordinary clock-out
-   remains unverified. Legacy/invalid intervals use corrections. Review Pending
-   corrections, inspect overnight dates and provide a rejection explanation.
+   remains unverified. Verify valid closed attendance; unknown evidence stays unavailable. Correction requests and reviews are retired.
    Expected instants/assignment changes prevent stale verification.
 5. **Intern Documents:** review signed current files; approve or request revision
    with an explanation, or revoke a current approval through its supported flow.
@@ -169,9 +178,7 @@ Admin walkthrough:
    logged hours, charts, evaluations and intended announcements. Unknown input
    produces truthful unavailable/Unknown output.
 2. **My Attendance:** clock in; enter accomplishments at clock-out. Logged hours
-   do not become verified automatically. Filter Manila calendar periods; submit
-   a correction with explicit end date when overnight. Review status/explanations
-   and retain failed drafts. The existing all-record informational DTR CSV stays
+   do not become verified automatically. Filter Manila calendar periods. Correction requests and reviews are retired; unknown evidence remains unknown. The existing all-record informational DTR CSV stays
    available here.
 3. **My Documents:** use the requirement dropdown; repeated labels remain distinct
    IDs. Upload/replace the chosen standard/custom requirement. Accepted formats
@@ -244,7 +251,7 @@ commit, execute ROLLBACK when needed and inspect the first error.
 For upload failures, preserve receipts/files until the existing recovery RPC
 confirms the outcome. For sign-in/recovery, verify Auth settings/redirects/email
 delivery and account status separately. For Unknown metrics, inspect invalid
-timestamps/current evidence and request supported correction/resubmission; do
+timestamps/current evidence and request supported document resubmission; do
 not guess historical reviewers, dates or hours. Preserve failed drafts and Retry.
 
 Owner acceptance must be recorded on a **separately authorized disposable
@@ -261,7 +268,7 @@ separate deployment authorization:
   denials tested independently of UI visibility.
 - [ ] Company/section/Instructor and fractional target saved; manual year switch
   and archive impact preserve historical links.
-- [ ] Clock/accomplishment/unverified close → explicit verification or correction
+- [ ] Clock/accomplishment/unverified close → explicit verification of valid closed evidence
   review; overnight dates and rejection/failed drafts accepted.
 - [ ] Standard/custom upload → revision → replacement → approval/history; private
   signed-link delivery/expiry and ambiguous cleanup accepted.

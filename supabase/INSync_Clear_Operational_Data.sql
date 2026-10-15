@@ -29,6 +29,9 @@ DECLARE
   report jsonb := '[]'::jsonb;
   verified boolean := false;
 BEGIN
+  IF to_regclass('public.supervisor_evaluations') IS NOT NULL THEN
+    RAISE EXCEPTION 'Historical cleanup is unsupported after M15; preserve Supervisor/evaluation/correction history. No deletion performed.';
+  END IF;
   IF current_user <> 'postgres' OR NOT EXISTS (
     SELECT 1 FROM pg_catalog.pg_roles
     WHERE rolname='postgres' AND (rolsuper OR rolbypassrls)

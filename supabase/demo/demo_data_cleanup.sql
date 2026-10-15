@@ -13,6 +13,9 @@ DECLARE
  student uuid; coordinator uuid; ids uuid[]; r record;
  wrong boolean; affected integer; total_deleted integer := 0;
 BEGIN
+ IF to_regclass('public.supervisor_evaluations') IS NOT NULL THEN
+  RAISE EXCEPTION 'Historical demo cleanup is unsupported after M15; preserve evaluation/correction history';
+ END IF;
  IF current_user<>'postgres' THEN RAISE EXCEPTION 'Demo cleanup requires the trusted postgres SQL operator'; END IF;
  IF current_setting('insync_demo.confirmed_project_ref',true) IS DISTINCT FROM 'tcntyrwwqzyyqlzdtuer' THEN
   RAISE EXCEPTION 'Verify NEW project tcntyrwwqzyyqlzdtuer before replacing CHECK_NEW_PROJECT_BANNER_FIRST';

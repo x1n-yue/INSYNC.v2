@@ -21,6 +21,9 @@ DECLARE
  criteria constant jsonb := '{"punctuality":4,"performance":4,"conduct":5,"communication":4}';
  r record; n integer; collision boolean; inserted_docs integer := 0;
 BEGIN
+ IF to_regclass('public.supervisor_evaluations') IS NOT NULL THEN
+  RAISE EXCEPTION 'Historical demo seed is unsupported after M15; use isolated four-role workflow fixtures instead';
+ END IF;
  IF current_user <> 'postgres' THEN
   RAISE EXCEPTION 'Demo seed requires the trusted postgres SQL Editor operator';
  END IF;

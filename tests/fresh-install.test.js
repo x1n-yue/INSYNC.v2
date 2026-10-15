@@ -29,7 +29,7 @@ beforeEach(async()=>{await db.query('begin');await act(A,'select public.admin_se
 afterEach(async()=>{await db.query('rollback');});
 describe('fresh artifact real PostgreSQL workflows',()=>{
  it('installs validated constraints, complete RLS and exact protected RPC signatures',async()=>{
-  const rows=(await db.query("select relname,relrowsecurity from pg_class where relnamespace='public'::regnamespace and relkind='r'")).rows;expect(rows).toHaveLength(18);expect(rows.every(r=>r.relrowsecurity)).toBe(true);
+  const rows=(await db.query("select relname,relrowsecurity from pg_class where relnamespace='public'::regnamespace and relkind='r'")).rows;expect(rows).toHaveLength(28);expect(rows.every(r=>r.relrowsecurity)).toBe(true);
   expect((await db.query("select count(*)::int n from pg_constraint x join pg_class c on c.oid=x.conrelid where c.relnamespace='public'::regnamespace and not convalidated")).rows[0].n).toBe(0);
   for(const signature of ['public.send_announcement(uuid,text,text,uuid)','public.verify_attendance(uuid,timestamptz,timestamptz)']){
    const [r]=(await db.query('select has_function_privilege($1,$2,$3) auth,has_function_privilege($4,$2,$3) anon',['authenticated',signature,'EXECUTE','anon'])).rows;expect(r).toEqual({auth:true,anon:false});
@@ -79,9 +79,10 @@ describe('fresh artifact real PostgreSQL workflows',()=>{
   const docs=await readDocs();const metric=internMetrics({internId:SA,required:8,attendance:[],documents:docs});expect(metric.cleared).toBe(false);expect(metric.approved).toBe(4);
   expect(await act(SB,'select * from public.documents')).toEqual([]);
  });
- it('uses server-scored rubric and own/assigned evaluation visibility',async()=>{
-  const [r]=await act(IA,'select * from public.submit_evaluation($1,$2,$3,$4)',[SA,{punctuality:5,performance:4,conduct:3,communication:2},'Synthetic feedback',id(300)]);
-  expect(Number(r.overall_score)).toBe(73);expect((await act(SA,'select overall_score from public.evaluations'))[0].overall_score).toBe('73');
+ it('retains legacy scores but rejects ordinary new Coordinator evaluation submission',async()=>{
+  await expect(act(IA,'select * from public.submit_evaluation($1,$2,$3,$4)',[SA,{punctuality:5,performance:4,conduct:3,communication:2},'Old client',id(300)])).rejects.toThrow(/permission denied/);
+  await db.query("insert into public.evaluations(intern_id,evaluator_id,competencies,overall_score,feedback) values($1,$2,$3,73,'Legacy')",[SA,IA,{punctuality:5,performance:4,conduct:3,communication:2}]);
+  expect((await act(SA,'select overall_score,provenance from public.evaluations'))[0]).toEqual({overall_score:'73',provenance:'legacy_coordinator'});
   expect(await act(SB,'select * from public.evaluations')).toEqual([]);
  });
  it('preserves the existing last-Active-Admin safeguard',async()=>{

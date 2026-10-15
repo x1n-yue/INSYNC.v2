@@ -1,5 +1,15 @@
 # INSync — new Supabase project setup
 
+Current workflow: [Supervisor logbook submission and M18 rollout](../LOGBOOK_ATTENDANCE.md). Supervisor uploads signed paper evidence; the assigned Coordinator encodes and uses **Verify & Record Attendance** once. This supersedes new Coordinator uploads under M17. Historical records remain unchanged. Local only: no live migration, reset or deployment.
+
+
+Historical M17 paper fallback: [user guide, source/evidence rules and rollout](../COMPANY_ATTENDANCE.md). M17 is a prerequisite to M18; M18 must precede the current matching client. No live rollout or reset.
+
+Current M16 follow-up: [evaluation controls and rollout](../EVALUATION_CONTROLS.md). Apply reviewed M15, then M16, before the matching client. Local preparation only; no reset or live rollout.
+
+Current additive M15 upgrade: [Supervisor workflow and rollout](../SUPERVISOR_WORKFLOW.md). Supervisor is authorized; correction mutations and direct Coordinator evaluation creation are retired. Target: `tcntyrwwqzyyqlzdtuer`; no live rollout occurred. Historical cleanup/demo/reset procedures below do not authorize removing current evaluation/correction history.
+
+
 Prepared 2026-10-14. Use a dedicated **new** Supabase project. The old project
 `upnkotnmoeaykummcnlx` must be preserved: no further reset, drop, migration,
 credential reuse, or reconciliation against it. Its earlier authorized reset
@@ -79,7 +89,7 @@ prerequisite and rerun the whole installer. Do not skip failed sections or weake
 RLS. Shared public objects, incompatible integration triggers/policies, missing
 provider grants, or unsupported identities require explicit review.
 
-Included final definitions: seed-free initial schema and M01–M14, including
+Included final definitions: seed-free initial schema and M01–M18, including
 M05/M09 validated constraints, version/history workflows, custom requirements,
 saved academic-year relationships, authorized risk/clearance evidence, reporting
 queries, M12 verification and M13 coordinator fixes, and M14 last-Admin protection.
@@ -94,9 +104,9 @@ source hashes: `node scripts/build-reset-install.mjs`. Its default now writes on
 the fresh installer, reads no old private identity checkpoint and executes no SQL.
 Never use `--prepare-reset` for this new-project setup.
 
-Expected catalog: 18 RLS-protected application tables, 56 public routines,
-43 public policies, 8 application Storage policies and 31 application-related
-triggers (30 public + one Auth signup integration). All fresh constraints are
+Expected catalog: 28 RLS-protected application tables, 100 public routines,
+62 public policies, 16 application Storage policies and 51 application-related
+triggers (50 public + one Auth signup integration). All fresh constraints are
 validated. Table/function grants are explicit; raw announcement writes are denied.
 The matching frontend RPCs are:
 
@@ -202,8 +212,7 @@ Use dedicated test accounts and synthetic files, not real people/history.
    valid closed evidence using exact expected instants. Open/stale/foreign reviews
    must fail unchanged; repeated review must not double-count. A very short valid
    session may display `0.00` due to rounding; do not edit timestamps or invent hours.
-4. Request/review an attendance correction. Check rejection explanation/draft
-   retention and progress/clearance refresh after real success.
+4. Confirm correction UI is absent, all old correction mutation calls are denied, and historical data remains intact.
 5. Upload each assigned standard/custom requirement; request revision, replace and
    approve current evidence. Verify old versions/reviews retained and authorized
    signed links deliver bytes; unassigned/cross-intern download must fail.
@@ -212,7 +221,7 @@ Use dedicated test accounts and synthetic files, not real people/history.
    persisted readable title, validation, failures and draft retention. Selecting a
    clearance name must not upload into or satisfy clearance. Approve/resubmit as
    assigned Instructor and verify file/version history.
-7. Submit evaluation; verify server rubric score and Intern read-only visibility.
+7. Provision an isolated Supervisor/company/intern link, save a private draft, submit to the assigned Coordinator, manually simplify/preview/publish. Verify server original/final scores, adjusted-rating reason, source privacy, duplicate retries and own published Intern visibility.
    Check verified-target/current-approval clearance and evidence-based risk totals.
 8. Check complete authorized report data across pagination, PDF/XLSX/CSV output,
    audit export, logout, reload, recovery/session expiry and retry. Verify each

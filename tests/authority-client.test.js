@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { recordRpc, reviewCorrections } from "../src/lib/authority";
+import { reviewCorrections } from "./legacy-correction-client";
+import { recordRpc } from "../src/lib/authority";
 
 describe("controlled RPC client outcomes", () => {
   it.each([null, [], [{ id: "one" }, { id: "two" }], {}])("rejects empty/non-single record %j", async (data) => {

@@ -1,5 +1,15 @@
 # Run INSync in a browser
 
+Current workflow: [Supervisor logbook submission and M18 rollout](LOGBOOK_ATTENDANCE.md). Supervisor uploads signed paper evidence; the assigned Coordinator encodes and uses **Verify & Record Attendance** once. This supersedes new Coordinator uploads under M17. Historical records remain unchanged. Local only: no live migration, reset or deployment.
+
+
+Previous M17 fallback (new-entry workflow superseded by M18): [Company Attendance Sheet guide and M17 rollout](COMPANY_ATTENDANCE.md). This replaces the offline/PWA attendance proposal. Local preparation only; no live migration, reset or deployment.
+
+Current follow-up: [shared ratings, selectable feedback and Supervisor layout](EVALUATION_CONTROLS.md). Additive M16 and the matching client are prepared locally; M15 remains unchanged. No live migration, reset or deployment was performed.
+
+Current 2026-10-14 deliverable: [Supervisor evaluations and correction retirement](SUPERVISOR_WORKFLOW.md). The user authorizes a fourth role and an additive upgrade for deployed project `tcntyrwwqzyyqlzdtuer`. M15 and the new client are prepared locally; no live schema change, reset or deployment was performed. Older correction-request/new-evaluation and three-role guidance below is historical and superseded.
+
+
 The app uses React/Vite for the website and Supabase for Auth, Postgres and Storage.
 
 ## 1. Set up the database
@@ -28,6 +38,10 @@ in this exact order; proceed only after it succeeds:
 13. [M12_handover_workflows.sql](supabase/migrations/M12_handover_workflows.sql)
 14. [M13_coordinator_operations.sql](supabase/migrations/M13_coordinator_operations.sql)
 15. [M14_last_admin_protection.sql](supabase/migrations/M14_last_admin_protection.sql)
+16. [M15_supervisor_evaluations.sql](supabase/migrations/M15_supervisor_evaluations.sql)
+17. [M16_evaluation_controls.sql](supabase/migrations/M16_evaluation_controls.sql)
+18. [M17_company_attendance.sql](supabase/migrations/M17_company_attendance.sql)
+19. [M18_supervisor_logbook.sql](supabase/migrations/M18_supervisor_logbook.sql)
 
 The initial file creates the 12 baseline tables and a private documents bucket.
 It contains no demo records, accounts or reset statements. It refuses existing

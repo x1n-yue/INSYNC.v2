@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "groups": {
+    "strengths": [
+      {"id":"punctuality","label":"Reliable attendance","text":"Demonstrates reliable attendance and punctuality."},
+      {"id":"quality","label":"Quality work","text":"Produces careful, good-quality work."},
+      {"id":"conduct","label":"Professional conduct","text":"Demonstrates professional conduct in the workplace."},
+      {"id":"communication","label":"Clear communication","text":"Communicates clearly with the team."},
+      {"id":"teamwork","label":"Teamwork","text":"Works cooperatively with colleagues."},
+      {"id":"initiative","label":"Initiative","text":"Shows initiative when carrying out assigned work."}
+    ],
+    "improvements": [
+      {"id":"none","label":"No additional concerns","text":"No additional concerns are recorded in this review."},
+      {"id":"punctuality","label":"Attendance and punctuality","text":"Attendance and punctuality need further attention."},
+      {"id":"quality","label":"Work quality","text":"Work quality needs further attention."},
+      {"id":"conduct","label":"Workplace conduct","text":"Workplace conduct needs further attention."},
+      {"id":"communication","label":"Communication","text":"Communication needs further attention."},
+      {"id":"time_management","label":"Time management","text":"Time management needs further attention."}
+    ],
+    "guidance": [
+      {"id":"none","label":"No additional actions","text":"No additional actions are recommended at this review."},
+      {"id":"maintain","label":"Maintain good practices","text":"Continue the good practices identified in this review."},
+      {"id":"plan","label":"Plan daily tasks","text":"Plan daily tasks and check priorities with the Supervisor."},
+      {"id":"check_work","label":"Check work before submission","text":"Check completed work before submitting it."},
+      {"id":"ask","label":"Ask for clarification","text":"Ask for clarification when instructions or expectations are unclear."},
+      {"id":"updates","label":"Provide progress updates","text":"Provide regular progress updates to the Supervisor."},
+      {"id":"discuss","label":"Discuss improvements with Supervisor","text":"Discuss the identified areas for improvement with the Supervisor."}
+    ],
+    "overall": [
+      {"id":"meeting","label":"Meeting expectations","text":"The intern is meeting the expectations discussed in this review."},
+      {"id":"progress","label":"Making steady progress","text":"The intern is making steady progress in the internship."},
+      {"id":"development","label":"Further development needed","text":"Further development is needed in the areas identified in this review."},
+      {"id":"support","label":"Continued guidance recommended","text":"Continued guidance is recommended to support the intern's development."}
+    ]
+  },
+  "conflicts": [
+    ["strengths:punctuality","improvements:punctuality"],
+    ["strengths:quality","improvements:quality"],
+    ["strengths:conduct","improvements:conduct"],
+    ["strengths:communication","improvements:communication"],
+    ["overall:development","improvements:none"],
+    ["overall:support","guidance:none"]
+  ],
+  "adjustments": {
+    "punctuality": [
+      {"id":"attendance_records","label":"Reviewed attendance evidence","text":"Adjusted after reviewing attendance evidence for this criterion."},
+      {"id":"supervisor_clarification","label":"Clarified with Supervisor","text":"Adjusted after clarifying the attendance rating with the Supervisor."},
+      {"id":"other","label":"Other","text":null}
+    ],
+    "performance": [
+      {"id":"work_evidence","label":"Reviewed work evidence","text":"Adjusted after reviewing work evidence for this criterion."},
+      {"id":"supervisor_clarification","label":"Clarified with Supervisor","text":"Adjusted after clarifying the work performance rating with the Supervisor."},
+      {"id":"other","label":"Other","text":null}
+    ],
+    "conduct": [
+      {"id":"conduct_evidence","label":"Reviewed conduct evidence","text":"Adjusted after reviewing workplace conduct evidence for this criterion."},
+      {"id":"supervisor_clarification","label":"Clarified with Supervisor","text":"Adjusted after clarifying the conduct rating with the Supervisor."},
+      {"id":"other","label":"Other","text":null}
+    ],
+    "communication": [
+      {"id":"communication_evidence","label":"Reviewed communication evidence","text":"Adjusted after reviewing communication evidence for this criterion."},
+      {"id":"supervisor_clarification","label":"Clarified with Supervisor","text":"Adjusted after clarifying the communication rating with the Supervisor."},
+      {"id":"other","label":"Other","text":null}
+    ]
+  }
+}

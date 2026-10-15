@@ -1,5 +1,15 @@
 # Nondestructive remediation runbook
 
+Current workflow: [Supervisor logbook submission and M18 rollout](../LOGBOOK_ATTENDANCE.md). Supervisor uploads signed paper evidence; the assigned Coordinator encodes and uses **Verify & Record Attendance** once. This supersedes new Coordinator uploads under M17. Historical records remain unchanged. Local only: no live migration, reset or deployment.
+
+
+Historical M17 paper fallback: [user guide, source/evidence rules and rollout](../COMPANY_ATTENDANCE.md). M17 is a prerequisite to M18; M18 must precede the current matching client. No live rollout or reset.
+
+Current M16 follow-up: [evaluation controls and rollout](../EVALUATION_CONTROLS.md). Apply reviewed M15, then M16, before the matching client. Local preparation only; no reset or live rollout.
+
+Current additive M15 upgrade: [Supervisor workflow and rollout](../SUPERVISOR_WORKFLOW.md). Supervisor is authorized; correction mutations and direct Coordinator evaluation creation are retired. Target: `tcntyrwwqzyyqlzdtuer`; no live rollout occurred. Historical cleanup/demo/reset procedures below do not authorize removing current evaluation/correction history.
+
+
 Coordinator repair follow-up: [M13 instructions](M13_Coordinator_Repair_README.md)
 provide read-only diagnostics and the focused rerunnable announcement/attendance
 repair. No live execution occurred. The full consolidated update now includes

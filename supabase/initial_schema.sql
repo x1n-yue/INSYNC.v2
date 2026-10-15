@@ -1,3 +1,5 @@
+-- Fresh baseline followed by M01-M15 supports Admin, Coordinator (instructor), Supervisor and Intern.
+-- M15 retires client correction mutations while retaining attendance history.
 -- INSync initial catalog: NEW, EMPTY SUPABASE PROJECTS ONLY.
 -- Review this file, then paste into Supabase SQL Editor as postgres, once.
 -- Next apply migrations/M01 through M09 individually in numeric order.

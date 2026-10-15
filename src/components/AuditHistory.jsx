@@ -5,7 +5,7 @@ import { calendarDate } from "../lib/lists";
 import { Pagination } from "./ListControls";
 import { EmptyState, ErrorNotice, LoadingState } from "./UI";
 import { ReportDownloads } from "./ReportsPanel";
-const categories=["profiles","interns","companies","course_sections","academic_years","attendance_logs","attendance_exceptions","evaluations","documents","document_versions","document_review_events","submissions","submission_versions","submission_files","submission_reviews","announcements","alerts"];
+const categories=["logbook_submissions","logbook_versions","logbook_events","profiles","interns","companies","course_sections","academic_years","attendance_logs","attendance_sheet_evidence","manual_attendance_events","attendance_exceptions","evaluations","supervisor_assignments","supervisor_evaluations","evaluation_reviews","evaluation_routing_events","evaluation_adjustment_events","documents","document_versions","document_review_events","submissions","submission_versions","submission_files","submission_reviews","announcements","alerts"];
 export default function AuditHistory({ refreshKey }) {
   const [filters,setFilters]=useState({actor:"",action:"",category:"",start:"",end:""});
   const [page,setPage]=useState(1),[size,setSize]=useState(25),[data,setData]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState("");

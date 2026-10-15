@@ -1,5 +1,10 @@
 # INSync demonstration guide — 2026-10-13
 
+Current follow-up: [shared ratings, selectable feedback and Supervisor layout](EVALUATION_CONTROLS.md). Additive M16 and the matching client are prepared locally; M15 remains unchanged. No live migration, reset or deployment was performed.
+
+Current 2026-10-14 deliverable: [Supervisor evaluations and correction retirement](SUPERVISOR_WORKFLOW.md). The user authorizes a fourth role and an additive upgrade for deployed project `tcntyrwwqzyyqlzdtuer`. M15 and the new client are prepared locally; no live schema change, reset or deployment was performed. Older correction-request/new-evaluation and three-role guidance below is historical and superseded.
+
+
 Historical walkthrough: current reporting, recovery, M12 workflows and acceptance
 instructions are in [OWNER_HANDOVER.md](OWNER_HANDOVER.md) and the
 [handover feature/evidence matrix](HANDOVER_AUDIT_2026-10-13.md). Instructor/Intern
@@ -55,7 +60,7 @@ Missing-table/RPC errors require checking the **project and migration ledger**, 
 ### Intern
 
 1. My Dashboard: assignment, saved target, announcements and calendar charts. Explain **logged versus verified** hours and verified completion progress. Unknown evidence stays Unknown/Unavailable.
-2. My Attendance: clock in, show elapsed session, clock out with accomplishments. Clock-out logs hours and does **not** verify them. Submit a past overnight correction with the correct next-day end date; switch to Instructor for review, then reload the Intern DTR. Show a rejected request's saved explanation. Download the informational all-record DTR CSV; it is not an official certified summary.
+2. My Attendance: clock in, show elapsed session, clock out with accomplishments. Clock-out logs hours and does **not** verify them. Correction requests/reviews are retired; demonstrate valid closed attendance verification through the Coordinator instead. Download the informational all-record DTR CSV; it is not an official certified summary.
 3. My Documents: upload standard evidence, obtain a revision explanation, resubmit, and approve the current version. Open **File & review history** to show retained previous files and review decisions. Private links last at most 60 seconds; regenerate expired links. Version-zero legacy evidence needs explicit resubmission before new approval/clearance.
 4. Create a flexible submission with two files; review/revise/resubmit or approve it. Show version/review history. Approval of flexible files does **not** satisfy the clearance checklist. Clearance additionally requires verified target hours and valid approvals for MOA, Endorsement, Consent, Medical and every current custom requirement.
 5. My Evaluations: show the Instructor's persisted rubric/feedback; test calendar/custom date filters. Intern controls are read-only. Missing/invalid scores are Unavailable.
@@ -64,7 +69,7 @@ Missing-table/RPC errors require checking the **project and migration ledger**, 
 ### Instructor
 
 1. Class Dashboard/Progress Tracker: assigned roster, name/student-ID/company search, section filter, page size/pages, attention links and verified progress. Filtered lists do not redefine complete-roster totals.
-2. Evaluations: choose an assigned fixture Intern, rate all four criteria 1–5, add feedback and submit. 5/4/3/2 produces **73/100** with weights 25/35/20/20; the server is authoritative. Check it from the Intern screen. An RPC failure must retain the draft.
+2. Evaluations: review a submitted Supervisor fixture source, read original criteria/feedback, save the manual student-facing explanation, preview and publish. Ratings are preserved by default; an adjustment needs an internal reason. Server score is authoritative. Only use isolated fixture recipients.
 3. DTR Review: approve the overnight fixture request, or reject another with a required explanation. Review selected pages/requests only; failed items/notes remain for retry. Approval must actually reconcile attendance, not only change the request badge.
 4. Intern Documents: select the correct UUID-labelled assigned Intern, inspect current files/history, request revision with explanation, approve current evidence or revoke Approved to Pending. Review flexible file sets separately. A stale version/review conflict requires refresh.
 5. Announcements: send only to isolated fixture recipients, personally or **My active roster**. Confirm the intended recipient sees it and a foreign fixture does not. Reassignment must not redirect an existing message. Show alert dismissal/error handling if fixture alerts exist.

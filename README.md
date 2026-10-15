@@ -1,9 +1,16 @@
 # INSync internship monitoring
 
-Latest plan, 2026-10-14: use a **new Supabase project** and preserve the old one.
-Follow [new-project setup](supabase/INSync_New_Project_Setup_README.md), not reset
-scripts. `.env.new` is a blank, ignored configuration template; the active `.env`
-has not changed. New-project credentials, remote setup and acceptance are pending.
+Current workflow: [Supervisor logbook submission and M18 rollout](LOGBOOK_ATTENDANCE.md). Supervisor uploads signed paper evidence; the assigned Coordinator encodes and uses **Verify & Record Attendance** once. This supersedes new Coordinator uploads under M17. Historical records remain unchanged. Local only: no live migration, reset or deployment.
+
+
+Previous M17 fallback (new-entry workflow superseded by M18): [Company Attendance Sheet guide and M17 rollout](COMPANY_ATTENDANCE.md). This replaces the offline/PWA attendance proposal. Local preparation only; no live migration, reset or deployment.
+
+Current follow-up: [shared ratings, selectable feedback and Supervisor layout](EVALUATION_CONTROLS.md). Additive M16 and the matching client are prepared locally; M15 remains unchanged. No live migration, reset or deployment was performed.
+
+Current 2026-10-14 deliverable: [Supervisor evaluations and correction retirement](SUPERVISOR_WORKFLOW.md). The user authorizes a fourth role and an additive upgrade for deployed project `tcntyrwwqzyyqlzdtuer`. M15 and the new client are prepared locally; no live schema change, reset or deployment was performed. Older correction-request/new-evaluation and three-role guidance below is historical and superseded.
+
+
+Current plan: preserve the deployed database and prepare additive M15, M16 then M17 upgrades. Fresh/new-project and reset documents below describe earlier tasks, not the current rollout.
 
 2026-10-14: the explicitly authorized test application database was reset and
 rebuilt on the verified INSync.V2 project. Auth users/Storage objects were preserved
@@ -45,7 +52,7 @@ The system is not described as secure or production-ready.
 
 For browser setup, the exact fresh Supabase SQL order, and first-Admin creation,
 see [WEB_SETUP.md](WEB_SETUP.md). New empty projects start with the seed-free
-[initial_schema.sql](supabase/initial_schema.sql), then M01-M14; existing projects
+[initial_schema.sql](supabase/initial_schema.sql), then M01-M18; existing projects
 must use the inspection/upgrade runbook instead.
 
 Use Node **22.12.0 or later** (supported test lines: 22 and 24), npm and the
@@ -106,7 +113,7 @@ account/assignment operations, validated hour targets, server-scored evaluations
 and versioned document operations; deploy M06-M08 before this client. M09 is a
 separate historical-validation gate, never a legacy-data repair.
 
-All three dashboards use the same logged/verified hours, target, risk and clearance
+The existing academic dashboards use the same logged/verified hours, target, risk and clearance
 rules. Clearance eligibility requires verified hours meeting the persisted target,
 all four standard requirement types and approval of every current requirement.
 Invalid or unavailable evidence yields unknown eligibility. Calendar periods use

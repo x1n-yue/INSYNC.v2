@@ -1,5 +1,113 @@
 # INSync remediation progress
 
+## M18 Supervisor logbook attendance — completed locally, 2026-10-15
+
+Resumed from CONTINUE_MANUAL_ATTENDANCE.md and reconciled source/git status. No applicable root/parent AGENTS.md exists; the only nested instructions are in the unrelated figma-redesign directory. Existing redesigned UI, earlier edits, credentials and database records were preserved. No commit, live migration, database reset, deployment, real-student write or Auth/Storage provider change occurred.
+
+Implemented: Supervisor-only assigned-Intern signed logbook drafts/multi-file upload/submission; frozen same-company Coordinator routing; private evidence previews; required correction returns/version-preserving resubmission; Coordinator manual Time In/Out encoding and one explicit atomic Verify & Record action; verified rows in the existing ledger, own Intern history/hours/clearance/reports/DTR, source/provenance, retained legacy M17 review/verification and printable blank A4 sheets. No Supervisor encoding, OCR/AI, browser offline queue or restored exception requests. New Coordinator upload/create RPC grants are retired. M15–M17 files retain their original hashes; additive M18 remains local only.
+
+Resume fixes: update fresh policy/trigger inventory assertions; make updater preservation snapshots support composite keys; include the three new tables in published diagnostics. These were the documented install/updater failures. Fix the actual Supervisor select's accessible name, exact submission retries after lost response, upload-byte accounting, expected-revision NULL rejection and original-assignment checks on unfinished uploads. New Intern details omit internal UUIDs/unneeded legacy-reason fields; original stored provenance is retained. Updated printable instructions to the single-action flow. Added native upgrade/client/authorization/race coverage; repaired test isolation so a committed concurrency fixture runs last.
+
+Validation:
+
+- `npm test -- --maxWorkers=2`: **2,501 passed, 36 files**, 157.34seconds. Includes **27 M18 native workflow cases**, a genuine pre-M18 M17 preservation/upgrade test, **8 client helper/render tests**, and existing evaluation/account/attendance/report suites. Native tests use real isolated PostgreSQL with synthetic provider schemas, multiple connections and rollback/audit faults; they never connect to Supabase.
+- Focused install/updater tests: **49 passed**; genuine M17 records survive additive M18 and two final-updater reruns with populated M18 drafts. Historical unverified evidence still explicitly verifies; no invented Supervisor source.
+- `npm run lint`: passes with no errors or warnings. `npm run build`: passes, 1,048modules; main1111.25kB/gzip320.88kB. Existing >500kB chunk advisory remains.
+- Final `node tests/browser/logbook-workflows.mjs`: **7 rendered groups passed, zero page errors, 18 screenshots**, using actual React/Chromium with mocked transport and blocked external requests. Covers PDF+PNG/two-page uploads, failure/progress/retry, missing recipient, draft restore, lost submit/verify responses, returned history/resubmission, two actual dates, explicit confirmation, atomic error with retained values, Intern CSV exactly once, privacy, historical verification and printable download. Actual1920/768/375 viewports, expanded/collapsed sidebar, loading/error/filter/no-assignment states, keyboard focus and200%zoom checked for page/dialog overflow. Reviewed desktop/mobile evidence and entry/details, verified history, collapsed/zoom layouts and current print rendering visually. Native SQL tests, not mocks, establish authorization.
+- Current browser-downloaded PDF: **3 landscape A4 pages**, all headings and final31January date present, new Supervisor-upload/Verify & Record instructions present, **no text outside page bounds** (PyMuPDF). No actual printer or screen-reader session tested.
+- `git diff --check`: passes; Git emits existing LF→CRLF conversion notices only. M18 SHA256 `228aed215fe5898b4712db4bb9d5b28764dd54fbdc727c91b809ed41b1e713e9` matches both generated artifacts. Inspection10 executes against native fixtures, not live.
+
+Artifacts are ignored under `.client-review/logbook/`: browser-results.json, print-results.json,18screenshots, blank-logbook-sheet.pdf, logbook-dtr.csv and current-print-page-1.png. Early failure.txt/failure.png files are historical debugging artifacts, superseded by the latest green browser-results.json.
+
+Remaining: separately authorize/rehearse rollout on verified project tcntyrwwqzyyqlzdtuer, reconcile old unsaved Coordinator uploads, apply only missing reviewed prerequisites then M18 before the matching client, configure explicit Active Supervisor/company/Intern and assigned Coordinator relationships, and validate actual Auth/JWT/private Storage/download/role sessions on isolated test users. The stale local CLI link was not used. No local implementation/test blocker remains; actual deployed behavior, physical file delivery and printer/accessibility acceptance are unverified. See LOGBOOK_ATTENDANCE.md for exact role matrix, file list, migration order, client compatibility and forward-recovery guidance.
+
+
+Current workflow: [Supervisor logbook submission and M18 rollout](LOGBOOK_ATTENDANCE.md). Supervisor uploads signed paper evidence; the assigned Coordinator encodes and uses **Verify & Record Attendance** once. This supersedes new Coordinator uploads under M17. Historical records remain unchanged. Local only: no live migration, reset or deployment.
+
+
+Previous M17 fallback (new-entry workflow superseded by M18): [Company Attendance Sheet guide and M17 rollout](COMPANY_ATTENDANCE.md). This replaces the offline/PWA attendance proposal. Local preparation only; no live migration, reset or deployment.
+
+Current follow-up: [shared ratings, selectable feedback and Supervisor layout](EVALUATION_CONTROLS.md). Additive M16 and the matching client are prepared locally; M15 remains unchanged. No live migration, reset or deployment was performed.
+
+Current 2026-10-14 deliverable: [Supervisor evaluations and correction retirement](SUPERVISOR_WORKFLOW.md). The user authorizes a fourth role and an additive upgrade for deployed project `tcntyrwwqzyyqlzdtuer`. M15 and the new client are prepared locally; no live schema change, reset or deployment was performed. Older correction-request/new-evaluation and three-role guidance below is historical and superseded.
+
+
+## Company Attendance Sheet fallback, 2026-10-14–15
+
+Implemented locally: advance-print landscape A4 sheets/logbook instructions;
+Coordinator encoding with private signed evidence and separate explicit
+verification; same-ledger source badges/filters/report/DTR columns; server-calculated
+hours and preserved daily/16-hour rules; atomic duplicate/overlap/open-session
+guards and stable retry IDs; immutable company/encoder provenance, controlled
+unverified-only revisions and full private before/after audit events. Supervisor
+gets no attendance permissions. Interns get own metadata/status, no paper-file
+access. No PWA, worker, IndexedDB attendance queue or exception restoration.
+
+| Check | Final local evidence |
+|---|---|
+| Full suite | `npm test -- --maxWorkers=2`: 2,465 tests / 33 files passed, 191.38s. Includes 13 native M17 groups and 9 client/PDF groups, actual RLS/grants, authoritative hours, explicit verification, cross-assignment/company denial, shared-sheet privacy, expiry/cancel cleanup, revisions, company snapshots after renaming, audit rollback and separate-connection retries/duplicates/online conflicts. Fresh and consolidated final SQL installs/reruns pass; read-only inspection 09 executes on the fixture. |
+| Final client refinement | 9 focused client/PDF cases passed after requiring server revalidation of already-ready upload receipts. Cleanup distinguishes confirmed missing objects, confirmed removal and unresolved deletion. |
+| Browser | 6 actual React groups passed; synthetic transport, blocked remote requests, no env-file loading or page exceptions. Advance download, 1920/768/375 entry/action layouts, upload failure/retry/progress/disabled controls, lost save-response retry after workspace refresh, unverified revision, signed preview/explicit verify, own-Intern privacy, mobile source filter and actual 9 logged / 9 verified-hour CSV row checked. |
+| Visual / print | 13 UI screenshots captured; desktop/mobile source forms, action areas/details/history and upload error/progress inspected visually; overflow assertions pass. 31-day PDF parsed/rendered with PyMuPDF: 3 landscape A4 pages, repeated headings, final date present and no text outside page bounds. PDF font sizes/wrapping checked visually. Physical printing and screen-reader sessions remain unverified. Artifacts/results: `.client-review/company-attendance/`. |
+| Lint / production | Passed with zero lint warnings/errors. Build: 1,046 modules; main JS 1,095.72 kB / gzip 317.03 kB. Existing large-chunk advisory remains. |
+| History / workspace | M15 SHA256 d7739e22… and M16 5f520d4a… unchanged. New M17 SHA256 82e78408ea0bf4e93dfed172a63e92574eec9c546c30a268fb296cfa0b21692b. Existing working-tree changes, Shell, global CSS, package files and active configuration preserved. `git diff --check` passes. Default fresh generation executes no SQL and reports `resetPrepared:false`. |
+| Live | No live migration, reset, Auth/Storage-object mutation, deployment or real-student encoding. Confirmed target remains tcntyrwwqzyyqlzdtuer; stale CLI link unchanged/unused. Provider Auth/JWT/PostgREST/byte delivery, deployed acceptance and physical printer checks await separately authorized rollout. |
+
+Current generated catalog: 25 application tables, 89 public functions, 59 public
++ 16 Storage policies, 47 public + one Auth trigger. Apply reviewed prerequisites,
+then M17 before the matching client, or use the supported consolidated final updater
+without replaying migrations. See [changed files, user guide and exact setup](COMPANY_ATTENDANCE.md).
+The existing one-session-per-start-date rule rejects same-day second sessions;
+open online records block manual creation and are never silently closed/replaced.
+Unknown historical company relationships and cleanup after assignment changes
+require operator reconciliation rather than fabricated provenance/deletion.
+
+## Evaluation controls and Supervisor layout follow-up, 2026-10-14
+
+Completed locally: shared native 1–5 radio controls; existing dashboard page spacing
+for Supervisor roster, drafts, submitted history, forms and dialogs; contained
+toolbars/results/empty states/pagination; selectable deterministic Coordinator
+feedback and optional remarks; preserved written drafts; explicit per-criterion
+adjustment reasons and private immutable events. M16 validates choices, reasons
+and exact preview text on the server, while retaining M15 score/state/scope rules.
+Original M15 SHA256 remains unchanged. No live operation or reset occurred.
+
+| Check | Follow-up evidence |
+|---|---|
+| Full test suite | Final `npm test -- --maxWorkers=2`: 2,443 tests in 31 files passed, 174.16s. Includes real isolated PostgreSQL, fresh-install and repeat consolidated-updater checks. A nested BETWEEN CHECK originally produced a different deparsed definition on rerun; M16 now uses equivalent explicit bounds and rerun checks pass. |
+| Focused database check | 11 M16 groups passed after adding owner/client update/delete denial assertions and four maximum-length reasons, each retained fully without exceeding the M15 combined-field constraint. Fresh-install diagnostics also passed after documentation/catalog updates. |
+| Browser workflows | 8 new controls/layout groups plus 10 existing Supervisor workflow groups passed. Actual React, synthetic transport, no env loading, blocked remote requests and zero page exceptions. Login, inactive gate, assignments, missing Coordinator, partial ratings/restoration, no-typing review, explicit reasons/remarks, preview equality, privacy and retired controls checked. |
+| Visual review | 27 screenshots in `.client-review/evaluation-improvements`; inspected rendered 1920/768/375 layouts, collapsed/expanded sidebar, source forms/action scroll, mobile details, feedback/preview, populated/empty/filtered/loading/error states and visible keyboard focus. Geometry assertions find no horizontal overflow or overlap. 200% uses equivalent 960×540 CSS reflow at 2× device scale; browser-toolbar zoom is not automated. |
+| Lint / build | Both passed. Build: 1,042 modules, main JS 1,065.53 kB / gzip 308.37 kB. Existing large-chunk advisory remains. |
+| Working tree | `git diff --check` passed; M15 matches its pre-follow-up SHA256. Existing unrelated changes and redesigned Shell/global CSS preserved. |
+| Live verification | Not performed: target catalog/ledger, provider Auth/PostgREST and deployed browser acceptance. Pending separate rollout authorization and target-scoped operator verification. |
+
+Generated final catalog: 23 RLS tables, 71 public routines, 55 public + 8 Storage
+policies, 41 public + one Auth trigger. Apply reviewed M15 then additive M16 before
+the matching client, or use the supported consolidated final updater without
+replaying migrations. See [delivery and exact rollout](EVALUATION_CONTROLS.md).
+Historical M15 evidence below records the preceding implementation stage.
+
+## Supervisor workflow and correction retirement, 2026-10-14
+
+Completed locally: four-role routing and secure Supervisor company/intern assignment history; immutable private source evaluations, routed private manual reviews, final publication with source/version provenance and original/final server scoring; explicit audited Admin rerouting; published-only Intern metrics/exports; correction UI/handlers/counters retired and old mutation grants revoked. Existing navy/teal shell and attendance/documents/clearance/report permissions remain. Old cleanup/demo tools now stop before mutation on M15 schemas. See [delivery, role matrix, user guide and rollout](SUPERVISOR_WORKFLOW.md).
+
+| Check | Actual final evidence |
+|---|---|
+| npm test, Node 24.15.0 | 2,425 tests / 29 files passed. Includes 13 native M15 groups with real RLS/grants, score/version/state checks, historical retention, audit rollback and separate-connection submission/publication overlap; generated fresh/consolidated SQL and repeat-updater validation; report data/format regressions. |
+| node tests/browser/supervisor-workflows.mjs | 10 groups passed; actual App/JSX with mocked Auth/PostgREST, remote requests blocked and no env-file loading. Password sign-in/routing, inactive gate, source/review drafts and failures, missing Coordinator, rating explanation, preview, publication, private-content exclusion, retired controls, Admin assignment history/role selector; Supervisor widths 375/768/1440. No browser exceptions. Ignored results/screenshots: .client-review/supervisor. |
+| npm run lint | Passed, zero warnings/errors. |
+| npm run build | Passed, 1,037 modules. Main JS 1,046.77 kB / gzip 303.24 kB; existing large-chunk advisory remains. Compilation is not live authorization proof. |
+| git diff --check | Passed; Git emits only line-ending conversion notices for generated SQL. |
+| Read-only CLI | Supabase 2.120.0 lists user-confirmed tcntyrwwqzyyqlzdtuer as ACTIVE_HEALTHY. Local link remains upnkotnmoeaykummcnlx and was not used or changed. No remote schema/catalog query or mutation, reset, deployment, email or real-student publication. |
+| Blocked/not performed | Live catalog/ledger review, actual JWT/PostgREST RPC/embedded RLS checks, provider Auth and deployed browser acceptance. Need target-scoped operator access/review and separately authorized schema/client rollout, followed by isolated fixture-account acceptance. |
+
+Regenerated offline final contracts: 22 application tables with RLS, 65 public functions, 53 public + 8 Storage policies, 39 public + one Auth trigger. Original M01-M14 executable migrations remain unchanged. Fresh initial schema changed only by explanatory comments; M15 carries the role/retirement changes. Existing M05/M09 historical validation rules are preserved.
+
+Remaining setup: verify the confirmed target catalog/ledger with inspection 07, reconcile the stale local CLI link without a bare --linked command, review backup/rollout order, apply M15 (or the supported consolidated final updater, not both) only with rollout authorization, publish the matching client only with deployment authorization, and let Active Admin configure real companies, Supervisor memberships, explicit Intern links and eligible Coordinators. No active environment file was changed. Public signup remains Pending Intern.
+
+Current M15 SHA256: d7739e22e31ad6cd535e708b7e4a9dea66d3d4849530cde9a5f8fa834837a03b.
+
 ## New-project preparation, 2026-10-14
 
 Old project preserved from this change of plan forward; prior committed reset

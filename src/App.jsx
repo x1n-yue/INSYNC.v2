@@ -3,6 +3,7 @@ import { supabase, setupError } from "./lib/supabaseClient";
 import LoginPage from "./components/LoginPage";
 import AdminDashboard from "./components/AdminDashboard";
 import InstructorDashboard from "./components/InstructorDashboard";
+import SupervisorDashboard from "./components/SupervisorDashboard";
 import InternDashboard from "./components/InternDashboard";
 import AuthLayout from "./components/auth/AuthLayout";
 import Notice from "./components/auth/Notice";
@@ -82,7 +83,7 @@ function ConfiguredApp() {
         if (error) console.error("Failed to load profile:", error.message);
         const valid = !error && data?.id === session.user.id &&
           ["Active", "Pending", "Inactive"].includes(data.status) &&
-          (data.status !== "Active" || ["admin", "instructor", "intern"].includes(data.role));
+          (data.status !== "Active" || ["admin", "instructor", "intern", "supervisor"].includes(data.role));
         if (!valid && !error) console.error("Failed to load profile: invalid account response");
         verifiedIdentity.current = valid ? session.user.id : null;
         setProfile(valid ? data : null);
@@ -169,6 +170,7 @@ function ConfiguredApp() {
     <div className="min-h-screen" style={{ background: "var(--background)" }}>
       {profile.role === "admin" && <AdminDashboard profile={profile} onLogout={handleLogout} />}
       {profile.role === "instructor" && <InstructorDashboard profile={profile} onLogout={handleLogout} />}
+      {profile.role === "supervisor" && <SupervisorDashboard profile={profile} onLogout={handleLogout} />}
       {profile.role === "intern" && <InternDashboard profile={profile} onLogout={handleLogout} />}
     </div>
   );

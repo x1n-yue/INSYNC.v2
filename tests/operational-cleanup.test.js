@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { installLegacyM14 } from './legacy-install';
 import { disposablePostgres } from './disposable-postgres.js';
 
 const sql = (name) => readFileSync(new URL(`../supabase/${name}`, import.meta.url), 'utf8');
@@ -10,7 +11,7 @@ let cluster, db;
 beforeAll(async () => {
   cluster = await disposablePostgres(); db = await cluster.connect();
   await db.query(sql('tests/baseline.sql'));
-  await db.query(sql('INSync_Consolidated_Update.sql'));
+  await installLegacyM14(db);
   for (let n = 1; n <= 4; n++) await db.query('insert into auth.users(id,email) values($1,$2)', [uid(n), `fixture${n}@example.invalid`]);
   await db.query("update public.profiles set role=case when id=$1 then 'admin' when id=$2 then 'instructor' else 'intern' end,status=case when id=$3 then 'Pending' else 'Active' end", [uid(1), uid(2), uid(4)]);
   await db.query("insert into public.companies(id,name) values($1,'Fixture Company')", [uid(10)]);
@@ -65,7 +66,7 @@ async function fixtures() {
   await db.query('commit');
 }
 
-describe('manual operational cleanup (only disposable PostgreSQL fixtures)', () => {
+describe('historical M14 operational cleanup (only disposable PostgreSQL fixtures)', () => {
   it('deletes all 13 operational tables in FK order; preserves accounts/targets/assignments/master data and Storage', async () => {
     await fixtures();
     const before = await snapshot();

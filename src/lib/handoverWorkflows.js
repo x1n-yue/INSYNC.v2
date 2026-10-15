@@ -28,7 +28,7 @@ export async function addRequirement(client, internId, name, requestId) {
 }
 
 export async function verifyAttendance(client, row, now = new Date()) {
-  if (attendanceEvidence(row, now).state !== 'closed') return { ok: false, error: 'Valid closed attendance required; use a correction for unknown evidence.' };
+  if (attendanceEvidence(row, now).state !== 'closed') return { ok: false, error: 'Valid closed attendance required; unknown evidence cannot be verified.' };
   const expectedIn=instantKey(row.clocked_in_at),expectedOut=instantKey(row.clocked_out_at);
   if(!expectedIn||!expectedOut) return {ok:false,error:'Timestamp precision is unavailable. Refresh before verifying.'};
   const result=await recordRpc(client, 'verify_attendance', { p_id: row.id, p_expected_in: row.clocked_in_at, p_expected_out: row.clocked_out_at });

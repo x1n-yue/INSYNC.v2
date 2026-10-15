@@ -35,6 +35,18 @@ function transport(role='intern',changes={}) {
 }
 const assets={fontBase64:readFileSync(new URL('../src/assets/fonts/Roboto-Regular.ttf',import.meta.url)).toString('base64'),logoBytes:encode({width:1,height:1,channels:4,data:new Uint8Array([0,120,120,255])})};
 describe('complete authorized report datasets (mocked transport)',()=>{
+  it('Intern performance exports never query private sources/reviews and staff distinguish original/final scores',async()=>{
+    const source={id:id(500),intern_id:SA,supervisor_id:id(9),company_id:id(10),coordinator_id:IA,version:2,evaluation_date:'2026-10-01',status:'Submitted to Coordinator',overall_score:75,feedback:'PRIVATE ORIGINAL'};
+    const final={id:id(501),intern_id:SA,evaluator_id:IA,created_at:'2026-10-01T00:00:00Z',provenance:'supervisor_review',source_evaluation_id:source.id,competencies:{punctuality:5,performance:5,conduct:3,communication:2},overall_score:80,feedback:'Clear explanation',strengths:'Teamwork',improvements:'Focus',guidance:'Practise'};
+    const c=transport('intern',{evaluations:[final],supervisor_evaluations:[source],evaluation_reviews:[{id:source.id,summary:'PRIVATE DRAFT',adjustment_reason:'PRIVATE REASON'}]});
+    const queried=[];const from=c.from;c.from=table=>{queried.push(table);return from(table);};
+    const student=await buildReport(c,'intern','performance',{mode:'all'},now);
+    expect(queried).not.toContain('supervisor_evaluations');expect(queried).not.toContain('evaluation_reviews');
+    expect(JSON.stringify(student)).not.toMatch(/PRIVATE/);expect(student.tables[0].totals).toContainEqual(['Evaluations',1]);
+    const staff=await buildReport(transport('instructor',{evaluations:[final],supervisor_evaluations:[source,{...source,id:id(502),status:'Supervisor Draft',overall_score:null}]}),'instructor','evaluations',{mode:'custom',start:'2026-10-01',end:'2026-10-01'},now);
+    expect(staff.tables[0].rows[0][staff.tables[0].headers.indexOf('Final published score /100')]).toBe(80);
+    expect(staff.tables[1].rows).toHaveLength(1);expect(staff.tables[1].rows[0].slice(-2)).toEqual([75,80]);expect(JSON.stringify(staff)).not.toMatch(/PRIVATE/);
+  });
   it('exports every record across a smaller API cap, with saved institution, text ID and Manila range',async()=>{
     const c=transport('intern',{attendance_logs:Array.from({length:501},(_,n)=>shift(n+1000))});
     const r=await buildReport(c,'intern','dtr',{mode:'all'},now);expect(r.tables[0].rows).toHaveLength(501);
@@ -49,7 +61,7 @@ describe('complete authorized report datasets (mocked transport)',()=>{
     expect(r.tables[0].rows).toHaveLength(1);expect(r.warnings.join(' ')).toMatch(/1 records.*unavailable log_date/);
     const scores=['2026-09-30T15:59:59Z','2026-09-30T16:00:00Z','2026-10-01T15:59:59Z','2026-10-01T16:00:00Z'].map((created_at,n)=>({id:id(200+n),intern_id:SA,evaluator_id:IA,created_at,competencies:{punctuality:5,performance:4,conduct:3,communication:2},overall_score:73,feedback:'Saved feedback'}));
     const p=await buildReport(transport('intern',{evaluations:scores}),'intern','performance',{mode:'custom',start:'2026-10-01',end:'2026-10-01'},now);
-    expect(p.tables[0].rows).toHaveLength(2);expect(p.tables[0].rows[0].at(-2)).toBe(73);
+    expect(p.tables[0].rows).toHaveLength(2);expect(p.tables[0].rows[0][p.tables[0].headers.indexOf('Final published score /100')]).toBe(73);
   });
   it.each([{mode:'custom',start:'',end:'2026-10-01'},{mode:'custom',start:'2026-02-30',end:'2026-03-01'},{mode:'custom',start:'2026-10-02',end:'2026-10-01'}])('rejects invalid dates %j',range=>expect(()=>reportRange(range)).toThrow(/valid start/));
   it('preserves unverified, Unknown and open evidence rather than fabricating zero totals',()=>{

@@ -1,0 +1,33 @@
+/* Paper fallback only; existing Shell and unrelated layouts remain unchanged. */
+.company-attendance { min-width:0; overflow-wrap:anywhere; }
+.company-attendance-source { display:inline-block; font-size:11px; line-height:1.5; padding:4px 8px; border:1px solid var(--border); border-radius:8px; background:var(--muted); color:var(--muted-foreground); }
+.company-attendance-source.paper-source-manual { color:var(--primary); background:var(--primary-light); }
+.surface-card.company-attendance { padding:24px; }
+.company-attendance .paper-stack { display:grid; gap:20px; min-width:0; }
+.company-attendance.paper-stack { display:grid; gap:24px; }
+.company-attendance .paper-field-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; }
+.company-attendance label { font-size:13px; min-width:0; }
+.company-attendance .paper-actions { display:flex; flex-wrap:wrap; align-items:center; gap:12px; }
+.company-attendance .paper-heading { justify-content:space-between; align-items:flex-start; }
+.company-attendance .paper-form, .company-attendance .paper-preview { padding:20px; border:1px solid var(--border); border-radius:12px; }
+.company-attendance .paper-preview { background:var(--muted); display:grid; gap:8px; }
+.company-attendance .paper-fieldset { padding:0; margin:0; border:0; min-inline-size:0; }
+.company-attendance .paper-checkbox { display:flex; align-items:flex-start; gap:10px; line-height:1.7; }
+.company-attendance .paper-checkbox input { width:18px; height:18px; flex:none; margin-top:2px; accent-color:var(--primary); }
+.company-attendance .paper-search { width:min(100%,360px); }
+.company-attendance .paper-results { border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+.company-attendance .paper-row { padding:20px; display:flex; flex-wrap:wrap; justify-content:space-between; gap:16px; }
+.company-attendance .paper-row+.paper-row { border-top:1px solid var(--border); }
+.company-attendance .paper-evidence { width:100%; height:440px; border:1px solid var(--border); border-radius:8px; }
+.company-attendance .paper-evidence-image { max-width:100%; height:auto; border:1px solid var(--border); }
+.company-attendance progress { width:100%; accent-color:var(--primary); }
+@media(max-width:767px) {
+ .surface-card.company-attendance { padding:20px 16px; }
+ .company-attendance .paper-field-grid { grid-template-columns:minmax(0,1fr); }
+ .company-attendance .paper-form,.company-attendance .paper-row { padding:16px; }
+}
+
+.company-attendance .logbook-review-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-items:start; gap:24px; }
+.company-attendance .logbook-review-grid>* { min-width:0; }
+.company-attendance summary { cursor:pointer; padding:12px 0; }
+@media(max-width:900px) { .company-attendance .logbook-review-grid { grid-template-columns:minmax(0,1fr); } }

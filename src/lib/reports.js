@@ -6,6 +6,7 @@ import { internMetrics } from './metrics';
 import { calendarDate } from './lists';
 import { EXPORT_LIMIT } from './exports';
 import { renderReport } from './reportFormats';
+import { attendanceSource } from './companyAttendance';
 
 export const REPORTS = {
   intern: [
@@ -40,7 +41,7 @@ function matching(rows,range,field,warnings) {
   if(!range.start && !range.end) return rows;
   let unknown=0;
   const result=rows.filter(r=>{
-    const value=field==='log_date' ? (calendarDate(r[field])===null ? '' : r[field]) :
+    const value=['log_date','evaluation_date'].includes(field) ? (calendarDate(r[field])===null ? '' : r[field]) :
       (r[field] && Number.isFinite(Date.parse(r[field])) ? manilaDate(new Date(r[field])) : '');
     if(!value){unknown++;return false;}
     return (!range.start||value>=range.start) && (!range.end||value<=range.end);
@@ -53,16 +54,16 @@ export function attendanceTable(rows,now) {
   const body=rows.map(r=>{
     const e=attendanceEvidence(r,now);
     if(e.state==='closed'){logged+=Number(e.logged);verified+=Number(e.verified);} else if(e.state==='open')open++;else unknown++;
-    return [r.id,r.log_date,stamp(r.clocked_in_at),stamp(r.clocked_out_at),text(r.hours),hours(e.logged),hours(e.verified),e.verification,text(r.accomplishment)];
+    return [r.id,r.log_date,stamp(r.clocked_in_at),stamp(r.clocked_out_at),text(r.hours),hours(e.logged),hours(e.verified),e.verification,text(r.accomplishment),attendanceSource(r)];
   });
-  return {title:'Attendance records',headers:['Record ID','Manila start date','Time in (Manila)','Time out (Manila)','Raw stored hours','Logged hours','Verified hours','Evidence','Accomplishments'],rows:body,
+  return {title:'Attendance records',headers:['Record ID','Manila start date','Time in (Manila)','Time out (Manila)','Raw stored hours','Logged hours','Verified hours','Evidence','Accomplishments','Source'],rows:body,
     totals:[['Matching records',rows.length],['Confirmed logged hours',hours(logged)],['Confirmed verified hours',hours(verified)],['Unknown records (totals incomplete if nonzero)',unknown],['Open sessions (not counted as completed hours)',open]]};
 }
 function evaluationTable(rows,people) {
-  return {title:'Saved evaluations',headers:['Intern','Student ID (text)','Evaluator','Manila date',...RUBRIC.map(c=>`${c.label} (${c.weight}%)`),'Server overall /100','Feedback'],
+  return {title:'Saved evaluations',headers:['Intern','Student ID (text)','Evaluator','Manila date',...RUBRIC.map(c=>`${c.label} (${c.weight}%)`),'Final published score /100','Student-facing summary','Provenance','Strengths','Areas for improvement','Guidance'],
     rows:rows.map(r=>[text(people.find(p=>p.id===r.intern_id)?.full_name),text(people.find(p=>p.id===r.intern_id)?.student_id),
       text(people.find(p=>p.id===r.evaluator_id)?.full_name || r.evaluator_id),stamp(r.created_at),...RUBRIC.map(c=>Number.isInteger(r.competencies?.[c.id]) && r.competencies[c.id]>=1 && r.competencies[c.id]<=5 ? r.competencies[c.id] : 'Unavailable'),
-      evaluationResult(r) ?? 'Unavailable',text(r.feedback)]),
+      evaluationResult(r) ?? 'Unavailable',text(r.feedback),r.provenance==='supervisor_review'?'Reviewed Supervisor evaluation':'Legacy Coordinator evaluation',text(r.strengths),text(r.improvements),text(r.guidance)]),
     totals:[['Evaluations',rows.length],['Unavailable overall scores',rows.filter(r=>evaluationResult(r)===null).length]]};
 }
 async function profile(client,role,id) {
@@ -128,7 +129,13 @@ export async function buildReport(client,role,key,filters={mode:'all'},now=new D
     const [attendance,documents,evaluations]=await Promise.all([needAttendance?get('attendance_logs'):[],needDocuments?get('documents'):[],needEvaluations?get('evaluations'):[]]);
     const datedAttendance=matching(attendance,range,'log_date',warnings),datedEvaluations=matching(evaluations,range,'created_at',warnings);
     if(key==='dtr')tables=[attendanceTable(datedAttendance,now)];
-    else if(['performance','evaluations'].includes(key))tables=[evaluationTable(datedEvaluations,people)];
+    else if(['performance','evaluations'].includes(key)) {
+      tables=[evaluationTable(datedEvaluations,people)];
+      if(role==='instructor') {
+        const sources=await get('supervisor_evaluations');
+        tables.push({title:'Original Supervisor scores (authorized submitted sources)',headers:['Source ID','Source version','Intern','Original Supervisor UUID','Company UUID','Original Coordinator UUID','Evaluation date','Source score /100','Published final score /100'],rows:matching(sources.filter(s=>s.status==='Submitted to Coordinator'),range,'evaluation_date',warnings).map(s=>[s.id,s.version,text(people.find(p=>p.id===s.intern_id)?.full_name),s.supervisor_id,s.company_id,s.coordinator_id,s.evaluation_date,s.overall_score,datedEvaluations.find(e=>e.source_evaluation_id===s.id)?.overall_score??'Unpublished / outside selected range'])});
+      }
+    }
     else if(key==='weekly') {
       const weeks=new Map();
       for(const r of datedAttendance) {

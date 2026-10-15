@@ -1,5 +1,10 @@
 # Clear operational records while retaining accounts
 
+The legacy SQL deliberately refuses M15 schemas. Keep Supervisor evaluations, reviews, correction history and audit records; a new cleanup policy would need separate authorization. Tests below rehearse historical M14 fixtures only.
+
+Current additive M15 upgrade: [Supervisor workflow and rollout](../SUPERVISOR_WORKFLOW.md). Supervisor is authorized; correction mutations and direct Coordinator evaluation creation are retired. Target: `tcntyrwwqzyyqlzdtuer`; no live rollout occurred. Historical cleanup/demo/reset procedures below do not authorize removing current evaluation/correction history.
+
+
 **Destructive manual cleanup, not a migration. Nothing was executed against live
 Supabase.** Back up the database and Storage files and pause the app, signups and
 uploads before running. Rehearse on an isolated restored copy first.

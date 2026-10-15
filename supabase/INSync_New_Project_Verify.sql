@@ -4,9 +4,9 @@ BEGIN READ ONLY;
 SET LOCAL search_path=pg_catalog;
 
 SELECT id, public, file_size_limit, allowed_mime_types
-FROM storage.buckets WHERE id='documents';
+FROM storage.buckets WHERE id IN ('documents','attendance-evidence');
 
--- Expected: 18 application tables, all with RLS enabled.
+-- Expected: 28 application tables, all with RLS enabled.
 SELECT c.relname AS application_table, c.relrowsecurity AS rls_enabled
 FROM pg_class c WHERE c.relnamespace='public'::regnamespace AND c.relkind='r'
 ORDER BY c.relname;
@@ -15,8 +15,8 @@ ORDER BY c.relname;
 SELECT c.relname, x.conname FROM pg_constraint x JOIN pg_class c ON c.oid=x.conrelid
 WHERE c.relnamespace='public'::regnamespace AND NOT x.convalidated;
 
--- Expected: 56 public routines; 43 public + 8 application Storage policies;
--- 30 public application triggers + one on_auth_user_created Auth trigger.
+-- Expected: 100 public routines; 62 public + 16 application Storage policies;
+-- 50 public application triggers + one on_auth_user_created Auth trigger.
 SELECT count(*) AS public_routines FROM pg_proc WHERE pronamespace='public'::regnamespace;
 SELECT schemaname, count(*) AS policies FROM pg_policies
 WHERE schemaname IN ('public','storage') GROUP BY schemaname ORDER BY schemaname;
@@ -34,9 +34,12 @@ FROM pg_proc p WHERE p.pronamespace='public'::regnamespace
 AND p.proname IN ('handle_new_user','send_announcement','verify_attendance',
                  'stage_submission','finalize_submission','review_submission',
                  'stage_document_upload','finalize_document_upload','review_document_version',
-                 'submit_evaluation','admin_set_assignment','audit_history','my_profile')
+                 'submit_correction','review_exception','review_exceptions','submit_evaluation',
+                 'logbook_queue','save_logbook_draft','stage_logbook_evidence','submit_logbook','return_logbook','verify_record_logbook','admin_reroute_logbook','supervisor_roster','admin_set_supervision','save_supervisor_evaluation',
+                 'save_evaluation_review','save_evaluation_review_v2','attendance_sheet_context','stage_attendance_sheet','finish_attendance_sheet','cancel_attendance_sheet','record_manual_attendance','revise_manual_attendance','verify_manual_attendance','verify_attendance_core','admin_reroute_evaluation','admin_set_assignment','audit_history','my_profile')
 ORDER BY p.proname,p.oid::regprocedure::text;
 
+-- Retired correction/direct evaluation functions above must have no API EXECUTE.
 -- Expected: SELECT true; INSERT/UPDATE/DELETE false. Writes use controlled RPC.
 SELECT has_table_privilege('authenticated','public.announcements','SELECT') AS history_read,
        has_table_privilege('authenticated','public.announcements','INSERT') AS raw_insert,

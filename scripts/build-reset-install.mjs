@@ -15,8 +15,8 @@ const tables=m.tables;
 const cols=[...new Map([...m.baseColumns].reverse().map(c=>[`${c.tab}.${c.name}`,c])).values(),...m.columns];
 // First baseline variant is the seed-free baseline, not the historical variants.
 for(const c of cols){const canonical=m.baseColumns.find(x=>x.tab===c.tab&&x.name===c.name);if(canonical)Object.assign(c,canonical);if(c.tab==='evaluations'&&c.name==='overall_score')c.required=true;}
-const cons=[...new Map([...m.baseConstraints].reverse().map(c=>[`${c.tab}.${c.name}`,c])).values(),...m.constraints];
-for(const c of cons){const canonical=m.baseConstraints.find(x=>x.tab===c.tab&&x.name===c.name);if(canonical)Object.assign(c,canonical);}
+const cons=[...new Map([...m.baseConstraints,...m.constraints].map(c=>[`${c.tab}.${c.name}`,c])).values()];
+for(const c of cons){const canonical=m.baseConstraints.find(x=>x.tab===c.tab&&x.name===c.name);if(canonical&&!m.constraints.some(x=>x.tab===c.tab&&x.name===c.name))Object.assign(c,canonical);}
 // Exact reviewed source coverage; no reset/demo fixture is executed or copied.
 const sources=consolidated.split('\n').filter(l=>l.startsWith('-- migrations/'));
 for(const line of sources){const match=line.match(/migrations\/(\S+) SHA256 ([A-Fa-f0-9]+)/);if(!match||createHash('sha256').update(read(`supabase/migrations/${match[1]}`)).digest('hex')!==match[2])throw Error('Consolidated definitions are stale; regenerate them offline before preparing reset');}
@@ -24,6 +24,7 @@ sources.unshift(`-- initial_schema.sql SHA256 ${createHash('sha256').update(read
 sources.push(`-- M05_validate_attendance.sql SHA256 ${createHash('sha256').update(read('supabase/migrations/M05_validate_attendance.sql')).digest('hex')}`);
 sources.push(`-- M09_validate_domain.sql SHA256 ${createHash('sha256').update(read('supabase/migrations/M09_validate_domain.sql')).digest('hex')}`);
 const policies=m.policies;
+const attendanceBucket=read('supabase/migrations/M17_company_attendance.sql').match(/-- M17_BUCKET_BEGIN:[^\n]*\n([\s\S]*?)-- M17_BUCKET_END/)[1];
 const policyDDL=p=>`CREATE POLICY ${ident(p.name)} ON ${ident(p.schema)}.${ident(p.tab)} AS ${p.permissive} FOR ${p.cmd} TO ${p.roles.map(r=>r==='public'?'PUBLIC':ident(r)).join(',')}\n${p.qual?` USING (${p.qual})`:''}${p.with_check?` WITH CHECK (${p.with_check})`:''};`;
 const providerGuard=`DO $$ BEGIN
  IF current_user<>'postgres' THEN RAISE EXCEPTION 'Trusted postgres operator required'; END IF;
@@ -55,7 +56,7 @@ DO $$ BEGIN
  THEN RAISE EXCEPTION 'Retained Auth identity has no supported email: review reconciliation, no invented email'; END IF;
 END $$;
 ${tables.map(tab=>`CREATE TABLE public.${ident(tab)} (\n${cols.filter(c=>c.tab===tab).map(c=>` ${ident(c.name)} ${c.type}${c.def?` DEFAULT ${c.def}`:''}${c.required?' NOT NULL':''}`).join(',\n')}\n);`).join('\n')}
--- Latest M01-M14 routines; M13 fixes the exact frontend RPC contracts.
+-- Latest M01-M18 routines; M13 fixes the exact frontend RPC contracts.
 ${m.functions.map(f=>`-- Latest source: ${f.source||'reviewed consolidated contract'}; ${f.identity}\n${f.def};`).join('\n')}
 -- Fresh data: M05/M09 checks are VALIDATED and score NOT NULL from creation.
 ${['p','u','c','f'].flatMap(kind=>cons.filter(c=>c.kind===kind).map(c=>`ALTER TABLE public.${ident(c.tab)} ADD CONSTRAINT ${ident(c.name)} ${c.def};`)).join('\n')}
@@ -68,7 +69,9 @@ ${m.columnGrants.map(g=>`GRANT ${g.privilege}(${ident(g.name)}) ON public.${iden
 ${m.functions.map(f=>`REVOKE ALL ON FUNCTION ${f.identity} FROM PUBLIC,anon,authenticated;${f.allowed?`\nGRANT EXECUTE ON FUNCTION ${f.identity} TO authenticated;`:''}`).join('\n')}
 ${policies.filter(p=>p.schema==='public').map(policyDDL).join('\n')}
 -- Preserve existing application-owned Storage policies EXACTLY when compatible.
--- No Storage tables, buckets, objects, provider schemas or unrelated policies changed.
+-- M17 creates its own private attendance-evidence bucket. Existing provider
+-- tables, objects, other buckets and unrelated policies remain unchanged.
+${attendanceBucket}
 DO $storage$ DECLARE p jsonb; actual record; BEGIN
  FOR p IN SELECT * FROM jsonb_array_elements(${quote(JSON.stringify(policies.filter(p=>p.schema==='storage')))}::jsonb) LOOP
   SELECT * INTO actual FROM pg_policies WHERE schemaname='storage' AND tablename=p->>'tab' AND policyname=p->>'name';

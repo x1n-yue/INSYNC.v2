@@ -46,6 +46,6 @@ export function ErrorNotice({ title = "Unable to load this section", children, o
   </div>;
 }
 
-export function EmptyState({ title, children, icon = <IconFolder size={24} /> }) {
-  return <div className="empty-state"><span className="empty-icon">{icon}</span><p className="font-semibold">{title}</p>{children && <p className="text-sm muted-copy mt-1">{children}</p>}</div>;
+export function EmptyState({ title, children, icon = <IconFolder size={24} />, actions }) {
+  return <div className="empty-state"><span className="empty-icon">{icon}</span><p className="font-semibold">{title}</p>{children && <p className="text-sm muted-copy mt-1">{children}</p>}{actions&&<div className="empty-actions">{actions}</div>}</div>;
 }

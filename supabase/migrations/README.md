@@ -1,13 +1,23 @@
 # Versioned upgrade path
 
+Current workflow: [Supervisor logbook submission and M18 rollout](../../LOGBOOK_ATTENDANCE.md). Supervisor uploads signed paper evidence; the assigned Coordinator encodes and uses **Verify & Record Attendance** once. This supersedes new Coordinator uploads under M17. Historical records remain unchanged. Local only: no live migration, reset or deployment.
+
+
+Historical M17 paper fallback: [user guide, source/evidence rules and rollout](../../COMPANY_ATTENDANCE.md). M17 is a prerequisite to M18; M18 must precede the current matching client. No live rollout or reset.
+
+Current M16 follow-up: [evaluation controls and rollout](../../EVALUATION_CONTROLS.md). Apply reviewed M15, then M16, before the matching client. Local preparation only; no reset or live rollout.
+
+Current additive M15 upgrade: [Supervisor workflow and rollout](../../SUPERVISOR_WORKFLOW.md). Supervisor is authorized; correction mutations and direct Coordinator evaluation creation are retired. Target: `tcntyrwwqzyyqlzdtuer`; no live rollout occurred. Historical cleanup/demo/reset procedures below do not authorize removing current evaluation/correction history.
+
+
 Existing databases can use the guarded manual
 [consolidated updater](../INSync_Consolidated_Update.sql) after reading its
 [prerequisites, coverage and verification guide](../INSync_Consolidated_Update_README.md).
-It installs final M01–M04/M06–M08/M10–M14 contracts in one transaction, preserves
+It installs final M01–M04/M06–M08/M10–M18 contracts in one transaction, preserves
 history, defers M05/M09 and does not mark original migrations applied. Do not
 replay successful original migrations afterward or assume live execution here.
 
-New empty projects: review/apply `../initial_schema.sql` once, then M01-M14 in
+New empty projects: review/apply `../initial_schema.sql` once, then M01-M18 in
 numeric order before creating accounts. See `../../WEB_SETUP.md`. This does not
 change the inspection, repair-review or deferred validation gates below for
 existing projects. The new initial catalog is locally rehearsed, not live-verified.
@@ -34,6 +44,11 @@ files by glob or assume a bootstrap reset is a rollback.
 | 13 | `M13_coordinator_operations.sql` | Reviewed M01/M02/M03 authority/audit/integrity, enabled trusted audience/audit triggers and reviewed announcement policies. Controlled retry-safe announcement creation/frozen recipients, repaired scoped history SELECT and denied direct writes; independently installs the M12 verification RPC. Rerunnable, no table/data/cohort conversion; [operator steps](../M13_Coordinator_Repair_README.md). |
 | 14 | `M14_last_admin_protection.sql` | Trusted postgres/M07 lifecycle; carries forward the verified existing project's last-Active-Admin safeguard. Prevents deletion/demotion/deactivation of the only active owner account, using the existing lifecycle lock. No role/record backfill. |
 
+| 15 | `M15_supervisor_evaluations.sql` | Reviewed M01-M14 final contracts/trusted owners; inspection 07 and role CHECK/drift review; Supervisor memberships/retained links, immutable sources/private reviews/final provenance, controlled score/transition/rerouting RPCs and transactional audit; correction/direct-evaluation mutation retirement. M05/M09 may remain deferred. Do not reapply after the latest consolidated updater. |
+| 16 | `M16_evaluation_controls.sql` | Reviewed M15/trusted ownership; additive private feedback choices/remarks/written-version retention and immutable per-criterion adjustment events; deterministic preview validation and controlled v2 review RPC. Existing unchanged written client compatible; changed ratings require structured reasons. No historical backfill. |
+| 17 | `M17_company_attendance.sql` | Reviewed M16/attendance/private Storage/trusted owners; private paper evidence, existing-ledger manual source and encoding/revision/verification metadata, controlled stage/finish/cancel/create/revise/explicit verification, immutable before/after events, same locks/interval rules. No historical rewrite or correction restoration. |
+| 18 | `M18_supervisor_logbook.sql` | Reviewed M17; Supervisor-only private evidence drafts/immutable source versions, assigned Coordinator route/return, atomic batch Verify & Record in existing ledger, audited explicit Admin reroute. Retires new Coordinator uploads/creation; historical evidence and verification remain. |
+
 M01's preflight stops on unexpected ownership, privileged routines, exposed views,
 extra domain/Auth triggers or restrictive Storage policy drift. Resolve drift in
 a separately reviewed proposal before rehearsal; never simply remove the guard.
@@ -52,7 +67,7 @@ policies before the table grant; no global allow policy is added. Use Storage AP
 to remove file bytes, never SQL deletion of provider metadata.
 
 Schema deployment must precede the new client build: App requires `my_profile`,
-Intern uses clock/correction/upload RPCs and Instructor uses review RPCs. Older
+Intern uses clock/upload RPCs and Instructor uses review RPCs. Older
 clients will receive denied raw-write errors after M01; coordinate their refresh.
 Apply only once using a reviewed migration ledger. The M01 file's human version
 label must be mapped to a timestamp filename by an operator before adopting
@@ -67,10 +82,10 @@ and `../tests/PHASE2.md` and `../tests/PHASE4.md`. Phase 2 also starts a fresh l
 race/fault tests. It accepts no external database URL/credentials and removes
 only its verified disposable directory after stopping the process.
 
-M01-M12 are human version labels, not automatic Supabase CLI timestamp discovery.
+M01-M18 are human version labels, not automatic Supabase CLI timestamp discovery.
 Record exact reviewed file hashes in the operator migration ledger; convert each
 to a timestamp filename only as part of a reviewed CLI adoption. M10/M11 are now
-allocated to the client PDF improvements; M12 is allocated to handover workflows. Future work starts at M13 or the next
+allocated to the client PDF improvements; M12 is allocated to handover workflows; M15/M16 cover Supervisor evaluations and controls. M18 covers Supervisor logbooks. Future work starts at M19 or the next
 unused identifier. Do not reuse a committed version number.
 
 See `../../CLIENT_IMPROVEMENTS.md` for exact fresh/existing order, compatibility,
